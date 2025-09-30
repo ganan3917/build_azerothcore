@@ -24,16 +24,11 @@ on:
           - Release
           - RelWithDebInfo
           - Debug
-      withTests:
-        description: '是否编译测试'
-        type: boolean
-        required: true
-        default: false
 
 jobs:
   build:
-    runs-on: windows-2022
-    timeout-minutes: 120
+    runs-on: windows-2022  # 包含VS2022的环境
+    timeout-minutes: 180
     name: Windows x64 编译流程
 
     steps:
@@ -41,6 +36,7 @@ jobs:
         run: |
           Write-Host "操作系统版本: $([Environment]::OSVersion.VersionString)"
           Write-Host "处理器数量: $($env:NUMBER_OF_PROCESSORS)"
+          Write-Host "VS版本: $(vswhere.exe -latest | Select-String -Pattern 'installationVersion')"
         shell: pwsh
 
       - name: 安装 Chocolatey 包管理器
@@ -50,22 +46,79 @@ jobs:
           iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
         shell: pwsh
 
-      - name: 安装编译依赖 (使用MySQL 8.4.6)
+      - name: 安装编译工具和依赖
         run: |
-          choco install -y cmake --installargs 'ADD_CMAKE_TO_PATH=System'
-          choco install -y git
-          choco install -y openssl --version 1.1.1q
-          choco install -y boost-msvc-14.3 --version 1.81.0.0
-          choco install -y mysql --version 8.4.6  # 使用MySQL 8.4.6版本
-          # choco install -y nlohmann-json
+          # 安装基础工具
+          choco install -y git make --no-progress
+          
+          # 安装开发库
+          choco install -y openssl --version 1.1.1q --no-progress
+          choco install -y boost-msvc-14.3 --version 1.81.0.0 --no-progress
+          
+          # 刷新环境变量
+          refreshenv
         shell: pwsh
 
-      - name: 验证依赖安装
+      - name: 安装MySQL 8.4（带重试机制）
         run: |
-          cmake --version
+          $mysqlVersion = "8.4.6"
+          $retries = 3
+          $success = $false
+          
+          for ($i = 1; $i -le $retries; $i++) {
+              try {
+                  Write-Host "第 $i 次尝试安装MySQL $mysqlVersion..."
+                  choco install -y mysql --version $mysqlVersion --no-progress --yes
+                  
+                  # 验证安装
+                  if (Get-Command "mysql" -ErrorAction SilentlyContinue) {
+                      $installedVersion = mysql --version | Select-String -Pattern "Ver (\d+\.\d+\.\d+)" | ForEach-Object { $_.Matches.Groups[1].Value }
+                      if ($installedVersion -eq $mysqlVersion) {
+                          Write-Host "MySQL $mysqlVersion 安装成功"
+                          $success = $true
+                          break
+                      } else {
+                          Write-Warning "安装的MySQL版本不匹配: 预期 $mysqlVersion, 实际 $installedVersion"
+                      }
+                  } else {
+                      Write-Warning "MySQL未被正确安装到系统路径"
+                      $mysqlBinPath = "C:\Program Files\MySQL\MySQL Server 8.4\bin"
+                      if (Test-Path $mysqlBinPath) {
+                          $env:PATH += ";$mysqlBinPath"
+                          [Environment]::SetEnvironmentVariable("PATH", $env:PATH, "Machine")
+                          Write-Host "已手动添加MySQL路径: $mysqlBinPath"
+                          $success = $true
+                          break
+                      }
+                  }
+              } catch {
+                  Write-Warning "第 $i 次安装失败: $_"
+              }
+              
+              # 重试前卸载
+              if (-not $success -and $i -lt $retries) {
+                  Write-Host "卸载MySQL准备重试..."
+                  choco uninstall -y mysql --no-progress --yes
+                  Start-Sleep -Seconds 5
+              }
+          }
+          
+          if (-not $success) {
+              Write-Error "经过 $retries 次尝试，MySQL $mysqlVersion 安装失败"
+              exit 1
+          }
+        shell: pwsh
+
+      - name: 验证所有依赖安装
+        run: |
+          Write-Host "=== 验证依赖版本 ==="
           git --version
+          make --version
+          cmake --version
           openssl version
-          mysql --version  # 验证MySQL版本是否为8.4.6
+          mysql --version
+          Write-Host "Boost版本: $((Get-Item "C:\Program Files\boost\boost_1_81_0").Name)"
+          Write-Host "=== 依赖验证完成 ==="
         shell: pwsh
 
       - name: 检出 AzerothCore 核心
@@ -85,6 +138,7 @@ jobs:
           
           if (-not (Test-Path $moduleDir)) {
               New-Item -Path $moduleDir -ItemType Directory -Force | Out-Null
+              Write-Host "创建模块目录: $moduleDir"
           }
           
           foreach ($module in $modulesList) {
@@ -111,7 +165,6 @@ jobs:
       - name: 配置 CMake
         run: |
           $buildType = "${{ github.event.inputs.buildType }}"
-          $withTests = ${{ github.event.inputs.withTests }}
           
           New-Item -Path "azerothcore/build" -ItemType Directory -Force | Out-Null
           cd azerothcore/build
@@ -126,14 +179,9 @@ jobs:
               "-DSCRIPTS=static",
               "-DTOOLS=ON",
               "-DENABLE_MYSQL_CLIENT=ON",
-              "-DUSE_SFMT=ON"
+              "-DUSE_SFMT=ON",
+              "-DBUILD_TESTING=OFF"
           )
-          
-          if ($withTests) {
-              $cmakeArgs += "-DBUILD_TESTING=ON"
-          } else {
-              $cmakeArgs += "-DBUILD_TESTING=OFF"
-          }
           
           cmake $cmakeArgs
         shell: pwsh
@@ -164,13 +212,16 @@ jobs:
 
       - name: 打包编译产物
         run: |
-          Compress-Archive -Path azerothcore/env/dist/* -DestinationPath azerothcore-${{ github.sha }}-${{ github.event.inputs.buildType }}.zip -Force
+          $commitSha = "${{ github.sha }}".Substring(0, 8)
+          $zipName = "azerothcore-windows-x64-${{ github.event.inputs.buildType }}-$commitSha.zip"
+          Compress-Archive -Path azerothcore/env/dist/* -DestinationPath $zipName -Force
+          Write-Host "已创建压缩包: $zipName"
         shell: pwsh
 
       - name: 上传编译产物
         uses: actions/upload-artifact@v4
         with:
           name: azerothcore-windows-x64-${{ github.event.inputs.buildType }}
-          path: azerothcore-*.zip
+          path: azerothcore-windows-x64-*.zip
           retention-days: 7
-    
+          if-no-files-found: error
