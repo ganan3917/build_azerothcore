@@ -17,7 +17,7 @@ on:
       modules:
         description: "模块列表（格式：仓库URL:分支,仓库URL2:分支2，空则不安装）"
         required: false
-        default: "https://github.com/azerothcore/mod-ah-bot:master,https://github.com/azerothcore/mod-transmog:master"
+        default: " "
         type: string
       build_type:
         description: "编译类型"
