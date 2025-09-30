@@ -1,8 +1,8 @@
-name: 编译AzerothCore-WoTLK (x86-64)
+name: 编译AzerothCore并发布到Releases
 
-# 触发条件：手动触发 + 自动触发（推送到指定分支时）
+# 触发条件：手动触发 + 推送到main分支自动触发
 on:
-  workflow_dispatch:  # 手动触发（支持输入参数）
+  workflow_dispatch:
     inputs:
       acore_repo:
         description: "AzerothCore仓库地址"
@@ -14,11 +14,6 @@ on:
         required: true
         default: "master"
         type: string
-      modules:
-        description: "模块列表（格式：仓库URL:分支,仓库URL2:分支2，空则不安装）"
-        required: false
-        default: " "
-        type: string
       build_type:
         description: "编译类型"
         required: true
@@ -29,105 +24,105 @@ on:
           - Release
           - RelWithDebInfo
           - MinSizeRel
-  push:  # 自动触发（推送到main分支时）
+  push:
     branches: ["main"]
 
+# 权限配置（允许创建/删除Releases）
+permissions:
+  contents: write
 
 jobs:
-  build:
-    runs-on: ubuntu-22.04  # Linux x86-64环境
+  build-and-release:
+    runs-on: ubuntu-22.04
     steps:
-      - name: 检查系统架构
+      - name: 检查系统架构（确保x86-64）
         run: |
           if [ "$(uname -m)" != "x86_64" ]; then
-            echo "❌ 必须在x86_64架构上编译"
+            echo "❌ 仅支持x86_64架构"
             exit 1
           fi
-          echo "✅ 确认系统架构：x86_64"
+          echo "✅ 确认架构：x86_64"
 
-      - name: 安装依赖（官方推荐版本）
+      - name: 安装依赖（官方推荐）
         run: |
           sudo apt update -y
-          # 基础编译工具
-          sudo apt install -y build-essential gcc g++ make cmake git
-          # 库依赖（参考AzerothCore官方文档）
-          sudo apt install -y libssl-dev libbz2-dev libreadline-dev libncurses-dev \
+          sudo apt install -y build-essential gcc g++ make cmake git \
+            libssl-dev libbz2-dev libreadline-dev libncurses-dev \
             libmariadbclient-dev-compat zlib1g-dev libboost-all-dev
-          # 检查cmake版本（需3.16+）
-          cmake --version
+          # 安装GitHub CLI（用于管理Releases）
+          type -p curl >/dev/null || sudo apt install curl -y
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          sudo apt update -y && sudo apt install gh -y
+
+      - name: 定义时间戳变量（用于命名）
+        id: timestamp
+        run: echo "TIMESTAMP=$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
 
       - name: 克隆AzerothCore仓库
         run: |
-          # 从输入参数或默认值获取仓库和分支（自动触发时用默认值）
           REPO="${{ github.event.inputs.acore_repo || 'https://github.com/azerothcore/azerothcore-wotlk.git' }}"
           BRANCH="${{ github.event.inputs.acore_branch || 'master' }}"
-          
           echo "🔧 克隆仓库：$REPO（分支：$BRANCH）"
           git clone --depth 1 --branch "$BRANCH" "$REPO" azerothcore
           cd azerothcore
-          # 拉取子模块（核心依赖）
           git submodule update --init --recursive
-
-      - name: 拉取指定模块（若有）
-        run: |
-          # 从输入参数获取模块列表（自动触发时用默认值）
-          MODULES="${{ github.event.inputs.modules || 'https://github.com/azerothcore/mod-ah-bot:master,https://github.com/azerothcore/mod-transmog:master' }}"
-          
-          if [ -z "$MODULES" ]; then
-            echo "ℹ️ 未指定模块，跳过拉取"
-            exit 0
-          fi
-          
-          # 模块需放在src/modules目录（AzerothCore默认扫描路径）
-          MODULE_DIR="azerothcore/src/modules"
-          mkdir -p "$MODULE_DIR"
-          
-          # 解析模块列表（格式：URL:分支）
-          IFS=',' read -ra MOD_LIST <<< "$MODULES"
-          for MOD in "${MOD_LIST[@]}"; do
-            if [ -z "$MOD" ]; then continue; fi
-            # 拆分URL和分支
-            MOD_URL=$(echo "$MOD" | cut -d':' -f1)
-            MOD_BRANCH=$(echo "$MOD" | cut -d':' -f2)
-            MOD_NAME=$(basename "$MOD_URL" .git)  # 用仓库名作为模块目录名
-            
-            echo "🔧 拉取模块：$MOD_NAME（分支：$MOD_BRANCH）"
-            git clone --depth 1 --branch "$MOD_BRANCH" "$MOD_URL" "$MODULE_DIR/$MOD_NAME"
-          done
 
       - name: 配置CMake
         run: |
           BUILD_TYPE="${{ github.event.inputs.build_type || 'RelWithDebInfo' }}"
           mkdir -p azerothcore/build && cd azerothcore/build
-          
-          # 核心编译配置（参考官方推荐参数）
           cmake .. \
             -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-            -DCMAKE_INSTALL_PREFIX=../install \  # 安装路径
-            -DTOOLS=1 \                         # 编译工具（地图提取等）
-            -DSCRIPTS=1 \                       # 编译脚本
-            -DMODULES=1 \                       # 启用模块支持
-            -DCMAKE_C_COMPILER=gcc \            # 指定C编译器
-            -DCMAKE_CXX_COMPILER=g++ \          # 指定C++编译器
-            -DBUILD_SHARED_LIBS=OFF             # 静态链接（减少运行时依赖）
+            -DCMAKE_INSTALL_PREFIX=../install \
+            -DTOOLS=1 \
+            -DSCRIPTS=1 \
+            -DMODULES=1 \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DBUILD_SHARED_LIBS=OFF
 
       - name: 编译项目
         run: |
           cd azerothcore/build
-          echo "🚀 开始编译（使用$(nproc)个CPU核心）"
-          make -j$(nproc)  # 多线程编译
-          make install     # 安装到指定目录
+          echo "🚀 开始编译（使用$(nproc)核心）"
+          make -j$(nproc)
+          make install
 
-      - name: 打包编译结果
+      - name: 打包编译结果（时间戳命名）
         run: |
-          # 压缩安装目录（包含可执行文件、配置等）
-          cd azerothcore
-          tar -czvf ../acore-build-${{ github.sha }}.tar.gz install/
-          echo "📦 编译产物已打包：acore-build-${{ github.sha }}.tar.gz"
+          TIMESTAMP="${{ steps.timestamp.outputs.TIMESTAMP }}"
+          # 打包安装目录（包含可执行文件、配置、工具等）
+          tar -czvf acore-build-${TIMESTAMP}.tar.gz -C azerothcore/install .
+          echo "📦 打包完成：acore-build-${TIMESTAMP}.tar.gz"
 
-      - name: 上传编译产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: acore-build-${{ github.sha }}
-          path: acore-build-${{ github.sha }}.tar.gz
-          retention-days: 14  # 产物保留14天
+      - name: 创建GitHub Release并上传产物
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TIMESTAMP="${{ steps.timestamp.outputs.TIMESTAMP }}"
+          REPO_BRANCH="${{ github.event.inputs.acore_branch || 'master' }}"
+          # 创建Release标签（唯一标识）
+          TAG="build-${TIMESTAMP}"
+          # 发布描述
+          DESCRIPTION="自动编译于 $(date +'%Y-%m-%d %H:%M:%S')\n仓库: ${{ github.event.inputs.acore_repo || '官方仓库' }}\n分支: $REPO_BRANCH"
+          # 创建Release并上传打包文件
+          gh release create "$TAG" \
+            --title "AzerothCore 编译产物 ${TIMESTAMP}" \
+            --body "$DESCRIPTION" \
+            --prerelease \
+            acore-build-${TIMESTAMP}.tar.gz
+
+      - name: 清理旧Releases（仅保留最新5个）
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 列出所有Releases（按创建时间排序，最新在前），排除草稿，取第6个及以后的标签
+          OLD_TAGS=$(gh release list --exclude-drafts --exclude-pre-releases=false --limit 100 --json tagName --jq '.[5:].tagName')
+          # 循环删除旧版本
+          for TAG in $OLD_TAGS; do
+            echo "🗑️ 删除旧版本：$TAG"
+            gh release delete "$TAG" --yes
+            # 删除对应的git标签
+            git push origin --delete "$TAG"
+          done
