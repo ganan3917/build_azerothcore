@@ -57,7 +57,7 @@ jobs:
           choco install -y openssl --version 1.1.1q
           choco install -y boost-msvc-14.3 --version 1.81.0.0
           choco install -y mysql --version 8.4.6  # 使用MySQL 8.4.6版本
-          choco install -y nlohmann-json
+          # choco install -y nlohmann-json
         shell: pwsh
 
       - name: 验证依赖安装
