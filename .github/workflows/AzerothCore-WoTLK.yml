@@ -1,227 +1,64 @@
-name: 编译 AzerothCore-WoTLK (Windows x64)
+name: Build AzerothCore x86-64
 
+# 触发条件：手动触发 + push 到 master 分支时自动触发
 on:
-  workflow_dispatch:
-    inputs:
-      coreRepo:
-        description: 'AzerothCore核心仓库URL'
-        required: true
-        default: 'https://github.com/azerothcore/azerothcore-wotlk.git'
-      coreBranch:
-        description: '核心仓库分支'
-        required: true
-        default: 'master'
-      modules:
-        description: '要安装的模块 (格式: 仓库URL:分支，多个用逗号分隔)'
-        required: false
-        default: ''
-      buildType:
-        description: '编译类型'
-        type: choice
-        required: true
-        default: 'RelWithDebInfo'
-        options:
-          - Release
-          - RelWithDebInfo
-          - Debug
+  workflow_dispatch:  # 允许手动在 GitHub 界面触发
+  push:
+    branches: [ "master" ]  # 可替换为你的目标分支
 
+# 工作流任务
 jobs:
   build:
-    runs-on: windows-2022  # 包含VS2022的环境
-    timeout-minutes: 180
-    name: Windows x64 编译流程
-
+    runs-on: ubuntu-22.04-large
     steps:
-      - name: 系统信息
-        run: |
-          Write-Host "操作系统版本: $([Environment]::OSVersion.VersionString)"
-          Write-Host "处理器数量: $($env:NUMBER_OF_PROCESSORS)"
-          Write-Host "VS版本: $(vswhere.exe -latest | Select-String -Pattern 'installationVersion')"
-        shell: pwsh
-
-      - name: 安装 Chocolatey 包管理器
-        run: |
-          Set-ExecutionPolicy Bypass -Scope Process -Force
-          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-        shell: pwsh
-
-      - name: 安装编译工具和依赖
-        run: |
-          # 安装基础工具
-          choco install -y git make --no-progress
-          
-          # 安装开发库
-          choco install -y openssl --version 1.1.1q --no-progress
-          choco install -y boost-msvc-14.3 --version 1.81.0.0 --no-progress
-          
-          # 刷新环境变量
-          refreshenv
-        shell: pwsh
-
-      - name: 安装MySQL 8.4（带重试机制）
-        run: |
-          $mysqlVersion = "8.4.6"
-          $retries = 3
-          $success = $false
-          
-          for ($i = 1; $i -le $retries; $i++) {
-              try {
-                  Write-Host "第 $i 次尝试安装MySQL $mysqlVersion..."
-                  choco install -y mysql --version $mysqlVersion --no-progress --yes
-                  
-                  # 验证安装
-                  if (Get-Command "mysql" -ErrorAction SilentlyContinue) {
-                      $installedVersion = mysql --version | Select-String -Pattern "Ver (\d+\.\d+\.\d+)" | ForEach-Object { $_.Matches.Groups[1].Value }
-                      if ($installedVersion -eq $mysqlVersion) {
-                          Write-Host "MySQL $mysqlVersion 安装成功"
-                          $success = $true
-                          break
-                      } else {
-                          Write-Warning "安装的MySQL版本不匹配: 预期 $mysqlVersion, 实际 $installedVersion"
-                      }
-                  } else {
-                      Write-Warning "MySQL未被正确安装到系统路径"
-                      $mysqlBinPath = "C:\Program Files\MySQL\MySQL Server 8.4\bin"
-                      if (Test-Path $mysqlBinPath) {
-                          $env:PATH += ";$mysqlBinPath"
-                          [Environment]::SetEnvironmentVariable("PATH", $env:PATH, "Machine")
-                          Write-Host "已手动添加MySQL路径: $mysqlBinPath"
-                          $success = $true
-                          break
-                      }
-                  }
-              } catch {
-                  Write-Warning "第 $i 次安装失败: $_"
-              }
-              
-              # 重试前卸载
-              if (-not $success -and $i -lt $retries) {
-                  Write-Host "卸载MySQL准备重试..."
-                  choco uninstall -y mysql --no-progress --yes
-                  Start-Sleep -Seconds 5
-              }
-          }
-          
-          if (-not $success) {
-              Write-Error "经过 $retries 次尝试，MySQL $mysqlVersion 安装失败"
-              exit 1
-          }
-        shell: pwsh
-
-      - name: 验证所有依赖安装
-        run: |
-          Write-Host "=== 验证依赖版本 ==="
-          git --version
-          make --version
-          cmake --version
-          openssl version
-          mysql --version
-          Write-Host "Boost版本: $((Get-Item "C:\Program Files\boost\boost_1_81_0").Name)"
-          Write-Host "=== 依赖验证完成 ==="
-        shell: pwsh
-
-      - name: 检出 AzerothCore 核心
+      # 步骤 1：拉取代码并初始化子模块
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.inputs.coreRepo }}
-          ref: ${{ github.event.inputs.coreBranch }}
-          path: 'azerothcore'
-          submodules: 'recursive'
-          fetch-depth: 0
+          submodules: recursive  # 自动初始化所有子模块（关键，避免依赖缺失）
 
-      - name: 安装指定模块
-        if: ${{ github.event.inputs.modules != '' }}
+      # 步骤 2：安装编译依赖
+      - name: Install dependencies
         run: |
-          $modulesList = "${{ github.event.inputs.modules }}".Split(',')
-          $moduleDir = "azerothcore/modules"
-          
-          if (-not (Test-Path $moduleDir)) {
-              New-Item -Path $moduleDir -ItemType Directory -Force | Out-Null
-              Write-Host "创建模块目录: $moduleDir"
-          }
-          
-          foreach ($module in $modulesList) {
-              $module = $module.Trim()
-              if ([string]::IsNullOrEmpty($module)) { continue }
-              
-              $parts = $module.Split(':')
-              $repoUrl = $parts[0].Trim()
-              $branch = if ($parts.Count -gt 1) { $parts[1].Trim() } else { 'master' }
-              
-              $moduleName = ($repoUrl -split '/' | Select-Object -Last 1) -replace '\.git$', ''
-              $targetPath = "$moduleDir/$moduleName"
-              
-              Write-Host "安装模块: $moduleName 从 $repoUrl 分支 $branch"
-              git clone --branch $branch --depth 1 $repoUrl $targetPath
-              
-              if (-not (Test-Path $targetPath)) {
-                  Write-Error "模块 $moduleName 安装失败"
-                  exit 1
-              }
-          }
-        shell: pwsh
+          sudo apt update -y
+          # 安装基础工具和 AzerothCore 依赖
+          sudo apt install -y \
+            cmake \
+            make \
+            g++ \
+            libboost-all-dev \
+            libmysqlclient-dev \
+            libssl-dev \
+            zlib1g-dev \
+            libbz2-dev \
+            libreadline-dev \
+            libncurses-dev \
+            libace-dev \
+            mysql-client  # 仅客户端，编译不需要完整 MySQL 服务
 
-      - name: 配置 CMake
+      # 步骤 3：配置 CMake（指定 x86-64 架构和编译参数）
+      - name: Configure CMake
         run: |
-          $buildType = "${{ github.event.inputs.buildType }}"
-          
-          New-Item -Path "azerothcore/build" -ItemType Directory -Force | Out-Null
-          cd azerothcore/build
-          
-          $cmakeArgs = @(
-              "..",
-              "-G", "Visual Studio 17 2022",
-              "-A", "x64",
-              "-DCMAKE_INSTALL_PREFIX=../env/dist",
-              "-DCMAKE_BUILD_TYPE=$buildType",
-              "-DBUILD_AZEROTHCORE_TOOLS=ON",
-              "-DSCRIPTS=static",
-              "-DTOOLS=ON",
-              "-DENABLE_MYSQL_CLIENT=ON",
-              "-DUSE_SFMT=ON",
-              "-DBUILD_TESTING=OFF"
-          )
-          
-          cmake $cmakeArgs
-        shell: pwsh
+          mkdir -p build && cd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \  # 发布模式（优化性能）
+            -DCMAKE_SYSTEM_PROCESSOR=x86_64 \  # 强制 x86-64 架构
+            -DACE_INCLUDE_DIR=/usr/include/ace \  # ACE 库路径
+            -DACE_LIBRARY=/usr/lib/x86_64-linux-gnu/libACE.so \
+            -DBUILD_TESTING=OFF  # 关闭测试（加速编译）
 
-      - name: 编译项目
+      # 步骤 4：编译项目（利用多核心加速）
+      - name: Build AzerothCore
         run: |
-          cd azerothcore/build
-          msbuild AzerothCore.sln /p:Configuration=${{ github.event.inputs.buildType }} /p:Platform=x64 /maxcpucount /verbosity:minimal
-        shell: pwsh
+          cd build
+          make -j4
 
-      - name: 安装编译结果
-        run: |
-          cd azerothcore/build
-          msbuild INSTALL.vcxproj /p:Configuration=${{ github.event.inputs.buildType }} /p:Platform=x64 /maxcpucount
-        shell: pwsh
-
-      - name: 验证编译结果
-        run: |
-          $exePath = "azerothcore/env/dist/bin/worldserver.exe"
-          if (Test-Path $exePath) {
-              Write-Host "编译成功! 找到 worldserver.exe"
-              Get-Item $exePath | Select-Object Name, Length, LastWriteTime
-          } else {
-              Write-Error "编译失败! 未找到 worldserver.exe"
-              exit 1
-          }
-        shell: pwsh
-
-      - name: 打包编译产物
-        run: |
-          $commitSha = "${{ github.sha }}".Substring(0, 8)
-          $zipName = "azerothcore-windows-x64-${{ github.event.inputs.buildType }}-$commitSha.zip"
-          Compress-Archive -Path azerothcore/env/dist/* -DestinationPath $zipName -Force
-          Write-Host "已创建压缩包: $zipName"
-        shell: pwsh
-
-      - name: 上传编译产物
+      # 步骤 5：打包编译产物并上传为 Artifact
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: azerothcore-windows-x64-${{ github.event.inputs.buildType }}
-          path: azerothcore-windows-x64-*.zip
-          retention-days: 7
-          if-no-files-found: error
+          name: azerothcore-x86_64-release
+          path: |
+            build/bin/  # 包含 authserver、worldserver 等可执行文件
+            build/lib/  # 依赖的动态库（可选，运行时可能需要）
+          retention-days: 7  # 产物保留 7 天（可调整）
