@@ -1,4 +1,4 @@
-name: 编译 AzerothCore-WoTLK
+name: 编译 AzerothCore-WoTLK (Windows x64)
 
 on:
   workflow_dispatch:
@@ -50,24 +50,105 @@ jobs:
           iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
         shell: pwsh
 
-      - name: 安装编译依赖 (使用MySQL 8.4.6)
+      - name: 配置Chocolatey源并安装基础依赖
         run: |
+          # 添加并优先使用官方源
+          choco sources add -n=chocolatey -s=https://community.chocolatey.org/api/v2/ --priority=1
+          choco source enable -n=chocolatey
+          
+          # 安装基础依赖
           choco install -y cmake --installargs 'ADD_CMAKE_TO_PATH=System'
           choco install -y git
           choco install -y openssl --version 1.1.1q
           choco install -y boost-msvc-14.3 --version 1.81.0.0
-          choco install -y mysql --version 8.4.6  # 使用MySQL 8.4.6版本
-          choco install -y nlohmann-json
         shell: pwsh
 
-      - name: 验证依赖安装
+      - name: 安装MySQL 8.4.6（带重试机制）
         run: |
-          cmake --version
-          git --version
-          openssl version
-          mysql --version  # 验证MySQL版本是否为8.4.6
+          $mysqlVersion = "8.4.6"
+          $retries = 3
+          $success = $false
+          
+          for ($i = 1; $i -le $retries; $i++) {
+              try {
+                  Write-Host "第 $i 次尝试安装MySQL $mysqlVersion..."
+                  # 使用--no-progress避免进度输出干扰，--yes自动确认
+                  choco install -y mysql --version $mysqlVersion --no-progress --yes
+                  
+                  # 验证安装
+                  if (Get-Command "mysql" -ErrorAction SilentlyContinue) {
+                      $installedVersion = mysql --version | Select-String -Pattern "Ver (\d+\.\d+\.\d+)" | ForEach-Object { $_.Matches.Groups[1].Value }
+                      if ($installedVersion -eq $mysqlVersion) {
+                          Write-Host "MySQL $mysqlVersion 安装成功"
+                          $success = $true
+                          break
+                      } else {
+                          Write-Warning "安装的MySQL版本不匹配: 预期 $mysqlVersion, 实际 $installedVersion"
+                      }
+                  } else {
+                      Write-Warning "MySQL未被正确安装到系统路径"
+                  }
+              } catch {
+                  Write-Warning "第 $i 次安装失败: $_"
+              }
+              
+              # 若未成功且不是最后一次尝试，则卸载后重试
+              if (-not $success -and $i -lt $retries) {
+                  Write-Host "卸载MySQL准备重试..."
+                  choco uninstall -y mysql --no-progress --yes
+                  Start-Sleep -Seconds 5
+              }
+          }
+          
+          if (-not $success) {
+              Write-Error "经过 $retries 次尝试，MySQL $mysqlVersion 安装失败"
+              exit 1
+          }
         shell: pwsh
 
+      - name: 配置MySQL环境变量
+        run: |
+          # 确保MySQL的bin目录在PATH中
+          $mysqlPath = "C:\Program Files\MySQL\MySQL Server 8.4\bin"
+          if (-not $env:PATH.Contains($mysqlPath)) {
+              Write-Host "添加MySQL路径到环境变量: $mysqlPath"
+              $env:PATH += ";$mysqlPath"
+              # 持久化到系统环境变量
+              [Environment]::SetEnvironmentVariable("PATH", $env:PATH, "Machine")
+          }
+          
+          # 验证MySQL命令
+          mysql --version
+        shell: pwsh
+
+      - name: 手动安装nlohmann-json头文件
+        run: |
+          $jsonVersion = "3.11.3"
+          $zipUrl = "https://github.com/nlohmann/json/releases/download/v$jsonVersion/json.hpp"
+          $installDir = "C:\ProgramFiles\nlohmann-json\include\nlohmann"
+          
+          New-Item -Path $installDir -ItemType Directory -Force | Out-Null
+          Invoke-WebRequest -Uri $zipUrl -OutFile "$installDir\json.hpp"
+          
+          [Environment]::SetEnvironmentVariable("INCLUDE", "$env:INCLUDE;$installDir\..", "Machine")
+          Write-Host "nlohmann-json v$jsonVersion 安装完成"
+        shell: pwsh
+
+      - name: 验证所有依赖
+        run: |
+          Write-Host "CMake版本: $(cmake --version | Select-Object -First 1)"
+          Write-Host "Git版本: $(git --version)"
+          Write-Host "OpenSSL版本: $(openssl version)"
+          Write-Host "MySQL版本: $(mysql --version)"
+          if (Test-Path "C:\ProgramFiles\nlohmann-json\include\nlohmann\json.hpp") {
+              Write-Host "nlohmann-json 验证成功"
+          } else {
+              Write-Error "nlohmann-json 未找到"
+              exit 1
+          }
+        shell: pwsh
+
+      # 以下步骤与之前保持一致
       - name: 检出 AzerothCore 核心
         uses: actions/checkout@v4
         with:
@@ -126,7 +207,8 @@ jobs:
               "-DSCRIPTS=static",
               "-DTOOLS=ON",
               "-DENABLE_MYSQL_CLIENT=ON",
-              "-DUSE_SFMT=ON"
+              "-DUSE_SFMT=ON",
+              "-DCMAKE_INCLUDE_PATH=C:\ProgramFiles\nlohmann-json\include"
           )
           
           if ($withTests) {
@@ -164,7 +246,9 @@ jobs:
 
       - name: 打包编译产物
         run: |
-          Compress-Archive -Path azerothcore/env/dist/* -DestinationPath azerothcore-${{ github.sha }}-${{ github.event.inputs.buildType }}.zip -Force
+          $zipName = "azerothcore-${{ github.sha }}-${{ github.event.inputs.buildType }}.zip"
+          Compress-Archive -Path azerothcore/env/dist/* -DestinationPath $zipName -Force
+          Write-Host "产物已打包为: $zipName"
         shell: pwsh
 
       - name: 上传编译产物
@@ -173,4 +257,4 @@ jobs:
           name: azerothcore-windows-x64-${{ github.event.inputs.buildType }}
           path: azerothcore-*.zip
           retention-days: 7
-    
+          if-no-files-found: error
