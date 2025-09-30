@@ -1,64 +1,133 @@
-name: Build AzerothCore x86-64
+name: 编译AzerothCore-WoTLK (x86-64)
 
-# 触发条件：手动触发 + push 到 master 分支时自动触发
+# 触发条件：手动触发 + 自动触发（推送到指定分支时）
 on:
-  workflow_dispatch:  # 允许手动在 GitHub 界面触发
-  push:
-    branches: [ "master" ]  # 可替换为你的目标分支
+  workflow_dispatch:  # 手动触发（支持输入参数）
+    inputs:
+      acore_repo:
+        description: "AzerothCore仓库地址"
+        required: true
+        default: "https://github.com/azerothcore/azerothcore-wotlk.git"
+        type: string
+      acore_branch:
+        description: "AzerothCore分支"
+        required: true
+        default: "master"
+        type: string
+      modules:
+        description: "模块列表（格式：仓库URL:分支,仓库URL2:分支2，空则不安装）"
+        required: false
+        default: "https://github.com/azerothcore/mod-ah-bot:master,https://github.com/azerothcore/mod-transmog:master"
+        type: string
+      build_type:
+        description: "编译类型"
+        required: true
+        default: "RelWithDebInfo"
+        type: choice
+        options:
+          - Debug
+          - Release
+          - RelWithDebInfo
+          - MinSizeRel
+  push:  # 自动触发（推送到main分支时）
+    branches: ["main"]
 
-# 工作流任务
+
 jobs:
   build:
-    runs-on: ubuntu-22.04-large
+    runs-on: ubuntu-22.04  # Linux x86-64环境
     steps:
-      # 步骤 1：拉取代码并初始化子模块
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive  # 自动初始化所有子模块（关键，避免依赖缺失）
+      - name: 检查系统架构
+        run: |
+          if [ "$(uname -m)" != "x86_64" ]; then
+            echo "❌ 必须在x86_64架构上编译"
+            exit 1
+          fi
+          echo "✅ 确认系统架构：x86_64"
 
-      # 步骤 2：安装编译依赖
-      - name: Install dependencies
+      - name: 安装依赖（官方推荐版本）
         run: |
           sudo apt update -y
-          # 安装基础工具和 AzerothCore 依赖
-          sudo apt install -y \
-            cmake \
-            make \
-            g++ \
-            libboost-all-dev \
-            libmysqlclient-dev \
-            libssl-dev \
-            zlib1g-dev \
-            libbz2-dev \
-            libreadline-dev \
-            libncurses-dev \
-            libace-dev \
-            mysql-client  # 仅客户端，编译不需要完整 MySQL 服务
+          # 基础编译工具
+          sudo apt install -y build-essential gcc g++ make cmake git
+          # 库依赖（参考AzerothCore官方文档）
+          sudo apt install -y libssl-dev libbz2-dev libreadline-dev libncurses-dev \
+            libmariadbclient-dev-compat zlib1g-dev libboost-all-dev
+          # 检查cmake版本（需3.16+）
+          cmake --version
 
-      # 步骤 3：配置 CMake（指定 x86-64 架构和编译参数）
-      - name: Configure CMake
+      - name: 克隆AzerothCore仓库
         run: |
-          mkdir -p build && cd build
+          # 从输入参数或默认值获取仓库和分支（自动触发时用默认值）
+          REPO="${{ github.event.inputs.acore_repo || 'https://github.com/azerothcore/azerothcore-wotlk.git' }}"
+          BRANCH="${{ github.event.inputs.acore_branch || 'master' }}"
+          
+          echo "🔧 克隆仓库：$REPO（分支：$BRANCH）"
+          git clone --depth 1 --branch "$BRANCH" "$REPO" azerothcore
+          cd azerothcore
+          # 拉取子模块（核心依赖）
+          git submodule update --init --recursive
+
+      - name: 拉取指定模块（若有）
+        run: |
+          # 从输入参数获取模块列表（自动触发时用默认值）
+          MODULES="${{ github.event.inputs.modules || 'https://github.com/azerothcore/mod-ah-bot:master,https://github.com/azerothcore/mod-transmog:master' }}"
+          
+          if [ -z "$MODULES" ]; then
+            echo "ℹ️ 未指定模块，跳过拉取"
+            exit 0
+          fi
+          
+          # 模块需放在src/modules目录（AzerothCore默认扫描路径）
+          MODULE_DIR="azerothcore/src/modules"
+          mkdir -p "$MODULE_DIR"
+          
+          # 解析模块列表（格式：URL:分支）
+          IFS=',' read -ra MOD_LIST <<< "$MODULES"
+          for MOD in "${MOD_LIST[@]}"; do
+            if [ -z "$MOD" ]; then continue; fi
+            # 拆分URL和分支
+            MOD_URL=$(echo "$MOD" | cut -d':' -f1)
+            MOD_BRANCH=$(echo "$MOD" | cut -d':' -f2)
+            MOD_NAME=$(basename "$MOD_URL" .git)  # 用仓库名作为模块目录名
+            
+            echo "🔧 拉取模块：$MOD_NAME（分支：$MOD_BRANCH）"
+            git clone --depth 1 --branch "$MOD_BRANCH" "$MOD_URL" "$MODULE_DIR/$MOD_NAME"
+          done
+
+      - name: 配置CMake
+        run: |
+          BUILD_TYPE="${{ github.event.inputs.build_type || 'RelWithDebInfo' }}"
+          mkdir -p azerothcore/build && cd azerothcore/build
+          
+          # 核心编译配置（参考官方推荐参数）
           cmake .. \
-            -DCMAKE_BUILD_TYPE=Release \  # 发布模式（优化性能）
-            -DCMAKE_SYSTEM_PROCESSOR=x86_64 \  # 强制 x86-64 架构
-            -DACE_INCLUDE_DIR=/usr/include/ace \  # ACE 库路径
-            -DACE_LIBRARY=/usr/lib/x86_64-linux-gnu/libACE.so \
-            -DBUILD_TESTING=OFF  # 关闭测试（加速编译）
+            -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+            -DCMAKE_INSTALL_PREFIX=../install \  # 安装路径
+            -DTOOLS=1 \                         # 编译工具（地图提取等）
+            -DSCRIPTS=1 \                       # 编译脚本
+            -DMODULES=1 \                       # 启用模块支持
+            -DCMAKE_C_COMPILER=gcc \            # 指定C编译器
+            -DCMAKE_CXX_COMPILER=g++ \          # 指定C++编译器
+            -DBUILD_SHARED_LIBS=OFF             # 静态链接（减少运行时依赖）
 
-      # 步骤 4：编译项目（利用多核心加速）
-      - name: Build AzerothCore
+      - name: 编译项目
         run: |
-          cd build
-          make -j4
+          cd azerothcore/build
+          echo "🚀 开始编译（使用$(nproc)个CPU核心）"
+          make -j$(nproc)  # 多线程编译
+          make install     # 安装到指定目录
 
-      # 步骤 5：打包编译产物并上传为 Artifact
-      - name: Upload build artifacts
+      - name: 打包编译结果
+        run: |
+          # 压缩安装目录（包含可执行文件、配置等）
+          cd azerothcore
+          tar -czvf ../acore-build-${{ github.sha }}.tar.gz install/
+          echo "📦 编译产物已打包：acore-build-${{ github.sha }}.tar.gz"
+
+      - name: 上传编译产物
         uses: actions/upload-artifact@v4
         with:
-          name: azerothcore-x86_64-release
-          path: |
-            build/bin/  # 包含 authserver、worldserver 等可执行文件
-            build/lib/  # 依赖的动态库（可选，运行时可能需要）
-          retention-days: 7  # 产物保留 7 天（可调整）
+          name: acore-build-${{ github.sha }}
+          path: acore-build-${{ github.sha }}.tar.gz
+          retention-days: 14  # 产物保留14天
