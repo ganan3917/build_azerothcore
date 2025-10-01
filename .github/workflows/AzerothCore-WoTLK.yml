@@ -46,9 +46,7 @@ jobs:
       - name: 安装依赖（官方推荐）
         run: |
           sudo apt update -y
-          sudo apt install -y build-essential gcc g++ make cmake git \
-            libssl-dev libbz2-dev libreadline-dev libncurses-dev \
-            libmariadbclient-dev-compat zlib1g-dev libboost-all-dev
+          sudo apt install -y git cmake make gcc g++ clang libmysqlclient-dev libssl-dev libbz2-dev libreadline-dev libncurses-dev mysql-server libboost-all-dev
           # 安装GitHub CLI（用于管理Releases）
           type -p curl >/dev/null || sudo apt install curl -y
           curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
