@@ -20,10 +20,10 @@ jobs:
         https://github.com/azerothcore/mod-autobalance.git master
         https://github.com/azerothcore/mod-auto-revive.git master
       # 最终使用的变量（优先取手动输入，无输入则用默认值）
-      ACORE_REPO: ${{ github.event.inputs.acore_repo || env.ACORE_REPO_DEFAULT }}
-      ACORE_BRANCH: ${{ github.event.inputs.acore_branch || env.ACORE_BRANCH_DEFAULT }}
-      BUILD_TYPE: ${{ github.event.inputs.build_type || env.BUILD_TYPE_DEFAULT }}
-      MODULES_INPUT: ${{ github.event.inputs.modules || env.MODULES_DEFAULT }}
+      ACORE_REPO: ${{ env.ACORE_REPO_DEFAULT }}
+      ACORE_BRANCH: ${{ env.ACORE_BRANCH_DEFAULT }}
+      BUILD_TYPE: ${{  env.BUILD_TYPE_DEFAULT }}
+      MODULES_INPUT: ${{ env.MODULES_DEFAULT }}
       MODULES_DIR: azerothcore/modules
 
     steps:
