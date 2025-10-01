@@ -1,18 +1,18 @@
 name: 编译AzerothCore并输出到Annotations
 
-# 触发条件：手动触发 + 推送到main分支自动触发
+# 触发条件：手动触发 + 推送到main分支 + 上海时间每天凌晨3点自动触发
 on:
   workflow_dispatch:
     inputs:
       acore_repo:
         description: "AzerothCore仓库地址"
         required: true
-        default: "https://github.com/azerothcore/azerothcore-wotlk.git"
+        default: "https://github.com/liyunfan1223/azerothcore-wotlk.git"
         type: string
       acore_branch:
         description: "AzerothCore分支"
         required: true
-        default: "master"
+        default: "Playerbot"
         type: string
       build_type:
         description: "编译类型"
@@ -24,8 +24,15 @@ on:
           - Release
           - RelWithDebInfo
           - MinSizeRel
+      modules:
+        description: "https://github.com/liyunfan1223/mod-playerbots.git mster\n"
+        required: false
+        type: string
   push:
     branches: ["main"]
+  schedule:
+    # 上海时间凌晨3点 = UTC时间19点（UTC+8）
+    - cron: "0 19 * * *"
 
 jobs:
   build-and-annotate:
@@ -45,9 +52,11 @@ jobs:
           sudo apt install -y git cmake make gcc g++ clang libmysqlclient-dev libssl-dev \
             libbz2-dev libreadline-dev libncurses-dev libboost-all-dev libcurl4-openssl-dev
 
-      - name: 定义时间戳变量（用于命名）
+      - name: 定义时间戳变量（UTC时间，用于命名）
         id: timestamp
-        run: echo "TIMESTAMP=$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+        run: |
+          echo "UTC_TIMESTAMP=$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+          echo "SHANGHAI_TIMESTAMP=$(TZ='Asia/Shanghai' date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
 
       - name: 克隆AzerothCore仓库
         run: |
@@ -58,9 +67,57 @@ jobs:
           cd azerothcore
           git submodule update --init --recursive
 
-      - name: 配置CMake
+      - name: 拉取指定模块到modules目录
+        id: pull_modules
         run: |
-          BUILD_TYPE="${{ github.event.inputs.build_type || 'RelWithDebInfo' }}"
+          # 定义模块目录（AzerothCore默认模块路径）
+          MODULES_DIR="azerothcore/modules"
+          mkdir -p "$MODULES_DIR"
+          
+          # 读取输入的模块列表（多行）
+          MODULES_INPUT="${{ github.event.inputs.modules }}"
+          MODULES_LIST=()
+          FAILURE_MODULES=()
+          
+          echo "📦 开始处理模块列表..."
+          # 按行分割输入（忽略空行）
+          while IFS= read -r line; do
+            # 跳过空行
+            if [ -z "$line" ]; then
+              continue
+            fi
+            # 分割仓库地址和分支（默认分支master）
+            REPO_URL=$(echo "$line" | awk '{print $1}')
+            BRANCH=$(echo "$line" | awk '{print $2}' || echo "master")
+            # 从仓库URL提取模块名（取最后一段，去掉.git后缀）
+            MODULE_NAME=$(basename "$REPO_URL" .git)
+            MODULE_PATH="$MODULES_DIR/$MODULE_NAME"
+            
+            echo "🔧 拉取模块：$MODULE_NAME（仓库：$REPO_URL，分支：$BRANCH）"
+            # 克隆模块到指定目录
+            if git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$MODULE_PATH"; then
+              MODULES_LIST+=("$MODULE_NAME（$BRANCH）")
+            else
+              echo "⚠️ 模块 $MODULE_NAME 拉取失败，将跳过该模块"
+              FAILURE_MODULES+=("$MODULE_NAME（$BRANCH）")
+            fi
+          done <<< "$MODULES_INPUT"
+          
+          # 输出成功/失败的模块列表（用于后续Annotations）
+          echo "SUCCESS_MODULES=$(IFS=';'; echo "${MODULES_LIST[*]}")" >> $GITHUB_OUTPUT
+          echo "FAILURE_MODULES=$(IFS=';'; echo "${FAILURE_MODULES[*]}")" >> $GITHUB_OUTPUT
+          
+          # 提示结果
+          if [ ${#MODULES_LIST[@]} -gt 0 ]; then
+            echo "✅ 成功拉取模块：${MODULES_LIST[*]}"
+          fi
+          if [ ${#FAILURE_MODULES[@]} -gt 0 ]; then
+            echo "⚠️ 拉取失败的模块：${FAILURE_MODULES[*]}"
+          fi
+
+      - name: 配置CMake（包含模块）
+        run: |
+          BUILD_TYPE="${{ github.event.inputs.build_type || 'MinSizeRel' }}"
           mkdir -p azerothcore/build && cd azerothcore/build
           cmake ../ -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
             -DCMAKE_INSTALL_PREFIX=../install \
@@ -70,42 +127,64 @@ jobs:
             -DWITH_WARNINGS=1 \
             -DTOOLS_BUILD=all \
             -DSCRIPTS=static \
-            -DMODULES=static
+            -DMODULES=static  # 静态编译模块（确保拉取的模块被包含）
 
-      - name: 编译项目
+      - name: 编译项目（含模块）
         run: |
           cd azerothcore/build
           echo "🚀 开始编译（使用$(nproc)核心）"
           make -j$(nproc)
           make install
 
-      - name: 打包编译结果（时间戳命名）
+      - name: 打包编译结果（UTC时间戳命名）
         id: package
         run: |
-          TIMESTAMP="${{ steps.timestamp.outputs.TIMESTAMP }}"
-          # 打包安装目录
+          TIMESTAMP="${{ steps.timestamp.outputs.UTC_TIMESTAMP }}"
           tar -czvf acore-build-${TIMESTAMP}.tar.gz -C azerothcore/install .
-          # 获取包大小（用于Annotations）
           PACKAGE_SIZE=$(du -h acore-build-${TIMESTAMP}.tar.gz | awk '{print $1}')
           echo "PACKAGE_NAME=acore-build-${TIMESTAMP}.tar.gz" >> $GITHUB_OUTPUT
           echo "PACKAGE_SIZE=$PACKAGE_SIZE" >> $GITHUB_OUTPUT
           echo "📦 打包完成：acore-build-${TIMESTAMP}.tar.gz（大小：$PACKAGE_SIZE）"
 
-      - name: 输出编译结果到Annotations
+      - name: 输出编译结果到Annotations（含模块信息）
         run: |
-          # GitHub Annotations格式：::notice|warning|error file=路径,line=行号::消息（支持Markdown）
+          UTC_TIME=$(date -u +'%Y-%m-%d %H:%M:%S')
+          SHANGHAI_TIME=$(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')
+          
+          # 处理模块列表（转换为换行展示）
+          SUCCESS_MODULES=$(echo "${{ steps.pull_modules.outputs.SUCCESS_MODULES }}" | tr ';' '\n')
+          FAILURE_MODULES=$(echo "${{ steps.pull_modules.outputs.FAILURE_MODULES }}" | tr ';' '\n')
+          
+          # 输出到GitHub Annotations
           echo "::notice title=编译产物信息::" >&2
           echo "::notice::📦 产物名称：${{ steps.package.outputs.PACKAGE_NAME }}" >&2
           echo "::notice::📊 产物大小：${{ steps.package.outputs.PACKAGE_SIZE }}" >&2
           echo "::notice::🔗 编译来源：${{ github.event.inputs.acore_repo || 'https://github.com/azerothcore/azerothcore-wotlk.git' }}（分支：${{ github.event.inputs.acore_branch || 'master' }}）" >&2
-          echo "::notice::🔨 编译类型：${{ github.event.inputs.build_type || 'RelWithDebInfo' }}" >&2
-          echo "::notice::⏰ 编译时间：$(date +'%Y-%m-%d %H:%M:%S')" >&2
-        # 注意：Annotations需要输出到stderr（>&2）才能被GitHub识别
+          echo "::notice::🔨 编译类型：${{ github.event.inputs.build_type || 'MinSizeRel' }}" >&2
+          echo "::notice::⏰ UTC时间：$UTC_TIME" >&2
+          echo "::notice::⏰ 上海时间：$SHANGHAI_TIME" >&2
+          
+          # 输出模块信息
+          if [ -n "$SUCCESS_MODULES" ]; then
+            echo "::notice::📌 成功集成模块：" >&2
+            echo "$SUCCESS_MODULES" | while read -r mod; do
+              echo "::notice::  - $mod" >&2
+            done
+          else
+            echo "::notice::📌 未集成任何模块" >&2
+          fi
+          
+          # 输出失败的模块（警告级别）
+          if [ -n "$FAILURE_MODULES" ]; then
+            echo "::warning::⚠️ 拉取失败的模块：" >&2
+            echo "$FAILURE_MODULES" | while read -r mod; do
+              echo "::warning::  - $mod" >&2
+            done
+          fi
 
-      # 可选：将产物保存为工作流Artifact（方便下载）
       - name: 保存产物为Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.package.outputs.PACKAGE_NAME }}
           path: ${{ steps.package.outputs.PACKAGE_NAME }}
-          retention-days: 7  # 保留7天
+          retention-days: 7
