@@ -76,7 +76,7 @@ jobs:
             -DCMAKE_C_COMPILER=/usr/bin/clang \
             -DCMAKE_CXX_COMPILER=/usr/bin/clang++ \
             # -DBUILD_SHARED_LIBS=OFF \
-            -DWITH_WARNINGS=1 \
+            # -DWITH_WARNINGS=1 \
             -DTOOLS_BUILD=all \
             -DSCRIPTS=static \
             -DMODULES=static \
