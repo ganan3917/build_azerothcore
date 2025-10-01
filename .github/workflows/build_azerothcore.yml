@@ -1,4 +1,4 @@
-name: 编译AzerothCore并输出到Annotations
+name: build_azerothcore
 
 on:
   workflow_dispatch:
