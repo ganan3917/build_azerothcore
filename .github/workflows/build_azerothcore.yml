@@ -113,22 +113,6 @@ jobs:
         run: |
             tar -czvf acore-${{ steps.ts.outputs.utc }}.tar.gz -C azerothcore/install .
             echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
-          
-          # 格式化模块列表
-          success=$(echo "${{ steps.modules.outputs.success }}" | tr ';' '\n')
-          failure=$(echo "${{ steps.modules.outputs.failure }}" | tr ';' '\n')
-          
-          # 核心信息
-          echo "::notice title=编译信息::" >&2
-          echo "::notice::📦 产物: ${{ steps.package.outputs.name }} (${{ steps.package.outputs.size }})" >&2
-          echo "::notice::🔗 来源: $ACORE_REPO ($ACORE_BRANCH)" >&2
-          echo "::notice::🔨 类型: $BUILD_TYPE" >&2
-          echo "::notice::⏰ 时间: UTC $utc / 上海 $sh" >&2
-          
-          # 模块信息
-          [ -n "$success" ] && { echo "::notice::📌 成功模块:" >&2; echo "$success" | xargs -I{} echo "::notice::  - {}" >&2; }
-          [ -z "$success" ] && echo "::notice::📌 无模块集成" >&2
-          [ -n "$failure" ] && { echo "::warning::⚠️ 失败模块:" >&2; echo "$failure" | xargs -I{} echo "::warning::  - {}" >&2; }
 
       - name: 保存产物
         uses: actions/upload-artifact@v4
