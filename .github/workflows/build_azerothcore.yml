@@ -2,41 +2,51 @@ name: build_azerothcore
 
 on:
   workflow_dispatch:
-  schedule: 
-   - cron: 0 19 * * *
+  schedule:
+    - cron: 0 19 * * *
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     env:
-      # 核心配置集中定义，作为默认值
-      ACORE_REPO_DEFAULT: "https://github.com/liyunfan1223/azerothcore-wotlk.git"
-      ACORE_BRANCH_DEFAULT: "Playerbot"
-      BUILD_TYPE_DEFAULT: "MinSizeRel"
-      MODULES_DEFAULT: |
+      # 核心配置参数（集中管理）
+      ACORE_REPO: "https://github.com/liyunfan1223/azerothcore-wotlk.git"
+      ACORE_BRANCH: "Playerbot"
+      BUILD_TYPE: "MinSizeRel"
+      MODULES_INPUT: |
         https://github.com/liyunfan1223/mod-playerbots.git master
         https://github.com/azerothcore/mod-eluna.git master
         https://github.com/azerothcore/mod-learn-spells.git master
         https://github.com/azerothcore/mod-autobalance.git master
         https://github.com/azerothcore/mod-auto-revive.git master
-      # 最终使用的变量（优先取手动输入，无输入则用默认值）
-      ACORE_REPO: ${{ env.ACORE_REPO_DEFAULT }}
-      ACORE_BRANCH: ${{ env.ACORE_BRANCH_DEFAULT }}
-      BUILD_TYPE: ${{  env.BUILD_TYPE_DEFAULT }}
-      MODULES_INPUT: ${{ env.MODULES_DEFAULT }}
       MODULES_DIR: azerothcore/modules
 
     steps:
       - name: 检查架构（仅x86_64）
         run: |
-          [ "$(uname -m)" = "x86_64" ] || { echo "❌ 仅支持x86_64架构"; exit 1; }
+          [ "$(uname -m)" = "x86_64" ] || { 
+            echo "❌ 仅支持x86_64架构"; 
+            exit 1; 
+          }
           echo "✅ 确认架构：x86_64"
 
       - name: 安装依赖
         run: |
           sudo apt update -y
-          sudo apt install -y git cmake make gcc g++ clang libmysqlclient-dev libssl-dev \
-            libbz2-dev libreadline-dev libncurses-dev libboost-all-dev libcurl4-openssl-dev
+          sudo apt install -y \
+            git \
+            cmake \
+            make \
+            gcc \
+            g++ \
+            clang \
+            libmysqlclient-dev \
+            libssl-dev \
+            libbz2-dev \
+            libreadline-dev \
+            libncurses-dev \
+            libboost-all-dev \
+            libcurl4-openssl-dev
 
       - name: 生成时间戳
         id: ts
@@ -47,7 +57,11 @@ jobs:
       - name: 克隆核心仓库
         run: |
           echo "🔧 克隆仓库：$ACORE_REPO（分支：$ACORE_BRANCH）"
-          git clone --depth 1 --branch "$ACORE_BRANCH" "$ACORE_REPO" azerothcore
+          git clone \
+            --depth 1 \
+            --branch "$ACORE_BRANCH" \
+            "$ACORE_REPO" \
+            azerothcore
           cd azerothcore && git submodule update --init --recursive
 
       - name: 拉取模块
@@ -65,7 +79,11 @@ jobs:
             name=$(basename "$repo" .git)
             path="$MODULES_DIR/$name"
             
-            if git clone --depth 1 --branch "$branch" "$repo" "$path"; then
+            if git clone \
+              --depth 1 \
+              --branch "$branch" \
+              "$repo" \
+              "$path"; then
               success+=("$name（$branch）")
             else
               failure+=("$name（$branch）")
@@ -79,11 +97,16 @@ jobs:
       - name: 配置CMake
         run: |
           mkdir -p azerothcore/build && cd azerothcore/build
-          cmake ../ -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+          cmake ../ \
+            -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
             -DCMAKE_INSTALL_PREFIX=../install \
-            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-            -DBUILD_SHARED_LIBS=OFF -DWITH_WARNINGS=1 \
-            -DTOOLS_BUILD=all -DSCRIPTS=static -DMODULES=static
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DWITH_WARNINGS=1 \
+            -DTOOLS_BUILD=all \
+            -DSCRIPTS=static \
+            -DMODULES=static
 
       - name: 编译安装
         run: |
@@ -94,8 +117,10 @@ jobs:
       - name: 打包产物
         id: package
         run: |
-            tar -czvf acore-${{ steps.ts.outputs.utc }}.tar.gz -C azerothcore/install .
-            echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
+          tar -czvf \
+            acore-${{ steps.ts.outputs.utc }}.tar.gz \
+            -C azerothcore/install .
+          echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
 
       - name: 保存产物
         uses: actions/upload-artifact@v4
