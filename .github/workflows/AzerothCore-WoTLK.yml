@@ -7,11 +7,13 @@ on:
       acore_repo:
         description: "AzerothCore仓库地址"
         required: true
+        # 【修改1】默认仓库改为 liyunfan1223/azerothcore-wotlk.git
         default: "https://github.com/liyunfan1223/azerothcore-wotlk.git"
         type: string
       acore_branch:
         description: "AzerothCore分支"
         required: true
+        # 【修改2】默认分支改为 Playerbot
         default: "Playerbot"
         type: string
       build_type:
@@ -25,8 +27,10 @@ on:
           - RelWithDebInfo
           - MinSizeRel
       modules:
-        description: "https://github.com/liyunfan1223/mod-playerbots.git mster\n"
+        description: "模块列表（格式：仓库地址 分支，每行一个）"
         required: false
+        # 【修改3】默认模块改为 liyunfan1223/mod-playerbots.git master
+        default: "https://github.com/liyunfan1223/mod-playerbots.git master"
         type: string
   push:
     branches: ["main"]
@@ -60,8 +64,9 @@ jobs:
 
       - name: 克隆AzerothCore仓库
         run: |
-          REPO="${{ github.event.inputs.acore_repo || 'https://github.com/azerothcore/azerothcore-wotlk.git' }}"
-          BRANCH="${{ github.event.inputs.acore_branch || 'master' }}"
+          # 【修改4】默认仓库/分支同步inputs的默认值（避免push/定时触发时用旧默认值）
+          REPO="${{ github.event.inputs.acore_repo || 'https://github.com/liyunfan1223/azerothcore-wotlk.git' }}"
+          BRANCH="${{ github.event.inputs.acore_branch || 'Playerbot' }}"
           echo "🔧 克隆仓库：$REPO（分支：$BRANCH）"
           git clone --depth 1 --branch "$BRANCH" "$REPO" azerothcore
           cd azerothcore
@@ -74,8 +79,8 @@ jobs:
           MODULES_DIR="azerothcore/modules"
           mkdir -p "$MODULES_DIR"
           
-          # 读取输入的模块列表（多行）
-          MODULES_INPUT="${{ github.event.inputs.modules }}"
+          # 读取输入的模块列表（多行），默认值同步inputs的模块配置
+          MODULES_INPUT="${{ github.event.inputs.modules || 'https://github.com/liyunfan1223/mod-playerbots.git master' }}"
           MODULES_LIST=()
           FAILURE_MODULES=()
           
@@ -86,7 +91,7 @@ jobs:
             if [ -z "$line" ]; then
               continue
             fi
-            # 分割仓库地址和分支（默认分支master）
+            # 分割仓库地址和分支（默认分支master，此处输入已指定master，兼容逻辑保留）
             REPO_URL=$(echo "$line" | awk '{print $1}')
             BRANCH=$(echo "$line" | awk '{print $2}' || echo "master")
             # 从仓库URL提取模块名（取最后一段，去掉.git后缀）
@@ -127,7 +132,7 @@ jobs:
             -DWITH_WARNINGS=1 \
             -DTOOLS_BUILD=all \
             -DSCRIPTS=static \
-            -DMODULES=static  # 静态编译模块（确保拉取的模块被包含）
+            -DMODULES=static  # 静态编译模块（确保拉取的mod-playerbots被包含）
 
       - name: 编译项目（含模块）
         run: |
@@ -159,7 +164,7 @@ jobs:
           echo "::notice title=编译产物信息::" >&2
           echo "::notice::📦 产物名称：${{ steps.package.outputs.PACKAGE_NAME }}" >&2
           echo "::notice::📊 产物大小：${{ steps.package.outputs.PACKAGE_SIZE }}" >&2
-          echo "::notice::🔗 编译来源：${{ github.event.inputs.acore_repo || 'https://github.com/azerothcore/azerothcore-wotlk.git' }}（分支：${{ github.event.inputs.acore_branch || 'master' }}）" >&2
+          echo "::notice::🔗 编译来源：${{ github.event.inputs.acore_repo || 'https://github.com/liyunfan1223/azerothcore-wotlk.git' }}（分支：${{ github.event.inputs.acore_branch || 'Playerbot' }}）" >&2
           echo "::notice::🔨 编译类型：${{ github.event.inputs.build_type || 'MinSizeRel' }}" >&2
           echo "::notice::⏰ UTC时间：$UTC_TIME" >&2
           echo "::notice::⏰ 上海时间：$SHANGHAI_TIME" >&2
