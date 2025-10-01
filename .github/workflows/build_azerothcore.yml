@@ -2,7 +2,8 @@ name: build_azerothcore
 
 on:
   workflow_dispatch:
-  schedule: [{ cron: "0 19 * * *" }]  # 上海时间凌晨3点（UTC+8）
+  push: { branches: ["main"] }
+  schedule: [{ cron: "0 19 * * *" }]
 
 jobs:
   build:
