@@ -1,0 +1,184 @@
+name: build_azerothcore
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 19 * * *
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write  # 授予操作Releases的权限
+    env:
+      # 核心配置参数（集中管理）
+      ACORE_REPO: "https://github.com/liyunfan1223/azerothcore-wotlk.git"
+      ACORE_BRANCH: "Playerbot"
+      BUILD_TYPE: "MinSizeRel"
+      MODULES_INPUT: |
+        https://github.com/liyunfan1223/mod-playerbots.git master
+        https://github.com/azerothcore/mod-eluna.git master
+        https://github.com/azerothcore/mod-learn-spells.git master
+        https://github.com/azerothcore/mod-autobalance.git master
+        https://github.com/azerothcore/mod-auto-revive.git master
+      MODULES_DIR: azerothcore/modules
+      RETAIN_COUNT: 3  # 保留最新的发布数量
+
+    steps:
+      - name: 检查架构（仅x86_64）
+        run: |
+          [ "$(uname -m)" = "x86_64" ] || { 
+            echo "❌ 仅支持x86_64架构"; 
+            exit 1; 
+          }
+          echo "✅ 确认架构：x86_64"
+
+      - name: 安装依赖
+        run: |
+          sudo apt update -y
+          sudo apt install -y \
+            git \
+            cmake \
+            make \
+            gcc \
+            g++ \
+            clang \
+            libmysqlclient-dev \
+            libssl-dev \
+            libbz2-dev \
+            libreadline-dev \
+            libncurses-dev \
+            libboost-all-dev \
+            libcurl4-openssl-dev
+
+      - name: 生成时间戳
+        id: ts
+        run: |
+          echo "utc=$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+          echo "sh=$(TZ='Asia/Shanghai' date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+          echo "tag=build-${{ date -u +%Y%m%d%H%M%S }}" >> $GITHUB_OUTPUT  # 生成唯一标签
+
+      - name: 克隆核心仓库
+        run: |
+          echo "🔧 克隆仓库：$ACORE_REPO（分支：$ACORE_BRANCH）"
+          git clone \
+            --depth 1 \
+            --branch "$ACORE_BRANCH" \
+            "$ACORE_REPO" \
+            azerothcore
+          cd azerothcore && git submodule update --init --recursive
+
+      - name: 拉取模块
+        id: modules
+        run: |
+          mkdir -p "$MODULES_DIR"
+          success=()
+          failure=()
+          
+          echo "📦 处理模块列表..."
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            repo=$(echo "$line" | awk '{print $1}')
+            branch=$(echo "$line" | awk '{print $2}')
+            name=$(basename "$repo" .git)
+            path="$MODULES_DIR/$name"
+            
+            if git clone \
+              --depth 1 \
+              --branch "$branch" \
+              "$repo" \
+              "$path"; then
+              success+=("$name（$branch）")
+            else
+              failure+=("$name（$branch）")
+              echo "⚠️ 模块 $name 拉取失败"
+            fi
+          done <<< "$MODULES_INPUT"
+          
+          echo "success=$(IFS=';'; echo "${success[*]}")" >> $GITHUB_OUTPUT
+          echo "failure=$(IFS=';'; echo "${failure[*]}")" >> $GITHUB_OUTPUT
+
+      - name: 配置CMake
+        run: |
+          mkdir -p azerothcore/build && cd azerothcore/build
+          cmake ../ \
+            -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+            -DCMAKE_INSTALL_PREFIX=../install \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DWITH_WARNINGS=1 \
+            -DTOOLS_BUILD=all \
+            -DSCRIPTS=static \
+            -DMODULES=static
+
+      - name: 编译安装
+        run: |
+          cd azerothcore/build
+          echo "🚀 开始编译（$(nproc)核心）"
+          make -j$(nproc) && make install
+
+      - name: 打包产物
+        id: package
+        run: |
+          tar -czvf \
+            acore-${{ steps.ts.outputs.utc }}.tar.gz \
+            -C azerothcore/install .
+          echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
+          echo "size=$(du -h ${PWD}/acore-${{ steps.ts.outputs.utc }}.tar.gz | awk '{print $1}')" >> $GITHUB_OUTPUT
+
+      - name: 保存产物到Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: ${{ steps.package.outputs.name }}
+          retention-days: 7
+
+      - name: 安装GitHub CLI
+        run: |
+          type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+            && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+            && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+            && sudo apt update \
+            && sudo apt install gh -y
+
+      - name: 登录GitHub CLI
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+
+      - name: 创建Release
+        id: create_release
+        run: |
+          release_notes=$(cat << EOF
+          ### 构建信息
+          - 时间：${{ steps.ts.outputs.sh }}（北京时间）
+          - 核心仓库：$ACORE_REPO
+          - 分支：$ACORE_BRANCH
+          - 构建类型：$BUILD_TYPE
+          - 成功模块：${{ steps.modules.outputs.success }}
+          - 产物大小：${{ steps.package.outputs.size }}
+          EOF
+          )
+          echo "$release_notes" > release_notes.md
+          gh release create ${{ steps.ts.outputs.tag }} \
+            --title "Build ${{ steps.ts.outputs.sh }}" \
+            --notes-file release_notes.md \
+            --prerelease
+
+      - name: 上传到Release
+        run: |
+          gh release upload ${{ steps.ts.outputs.tag }} ${{ steps.package.outputs.name }} \
+            --clobber
+
+      - name: 清理旧Release（保留最新${{ env.RETAIN_COUNT }}份）
+        run: |
+          # 获取所有以build-开头的发布标签（按创建时间排序，最新的在前）
+          tags=$(gh release list --limit 100 --json tagName --jq '.[] | select(.tagName | startswith("build-")) | .tagName' | sort -r)
+          
+          # 跳过前${RETAIN_COUNT}个，删除剩余的
+          echo "$tags" | tail -n +$((RETAIN_COUNT + 1)) | while read -r tag; do
+            echo "🗑️ 删除旧发布: $tag"
+            gh release delete "$tag" --yes
+            # 同时删除标签
+            git push origin --delete "$tag"
+          done
