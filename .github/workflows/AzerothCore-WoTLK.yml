@@ -30,7 +30,7 @@ on:
         description: "模块列表（格式：仓库地址 分支，每行一个）"
         required: false
         # 【修改3】默认模块改为 liyunfan1223/mod-playerbots.git master
-        default: "https://github.com/liyunfan1223/mod-playerbots.git master"
+        default: "https://github.com/liyunfan1223/mod-playerbots.git master\nhttps://github.com/azerothcore/mod-eluna.git master\nhttps://github.com/azerothcore/mod-learn-spells.git master\nhttps://github.com/azerothcore/mod-autobalance.git master\nhttps://github.com/azerothcore/mod-auto-revive.git master"
         type: string
   push:
     branches: ["main"]
