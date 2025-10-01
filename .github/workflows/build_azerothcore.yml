@@ -2,45 +2,27 @@ name: build_azerothcore
 
 on:
   workflow_dispatch:
-    inputs:
-      acore_repo:
-        description: "AzerothCore仓库地址"
-        required: true
-        default: "https://github.com/liyunfan1223/azerothcore-wotlk.git"
-        type: string
-      acore_branch:
-        description: "AzerothCore分支"
-        required: true
-        default: "Playerbot"
-        type: string
-      build_type:
-        description: "编译类型"
-        required: true
-        default: "MinSizeRel"
-        type: choice
-        options: [Debug, Release, RelWithDebInfo, MinSizeRel]
-      modules:
-        description: "模块列表（格式：仓库地址 分支，每行一个）"
-        required: false
-        default: |
-          https://github.com/liyunfan1223/mod-playerbots.git master
-          https://github.com/azerothcore/mod-eluna.git master
-          https://github.com/azerothcore/mod-learn-spells.git master
-          https://github.com/azerothcore/mod-autobalance.git master
-          https://github.com/azerothcore/mod-auto-revive.git master
-        type: string
-  push: { branches: ["main"] }
   schedule: [{ cron: "0 19 * * *" }]  # 上海时间凌晨3点（UTC+8）
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     env:
-      # 统一默认参数，避免重复定义
-      ACORE_REPO: ${{ github.event.inputs.acore_repo || 'https://github.com/liyunfan1223/azerothcore-wotlk.git' }}
-      ACORE_BRANCH: ${{ github.event.inputs.acore_branch || 'Playerbot' }}
-      BUILD_TYPE: ${{ github.event.inputs.build_type || 'MinSizeRel' }}
-      MODULES_INPUT: ${{ github.event.inputs.modules || 'https://github.com/liyunfan1223/mod-playerbots.git master' }}
+      # 核心配置集中定义，作为默认值
+      ACORE_REPO_DEFAULT: "https://github.com/liyunfan1223/azerothcore-wotlk.git"
+      ACORE_BRANCH_DEFAULT: "Playerbot"
+      BUILD_TYPE_DEFAULT: "MinSizeRel"
+      MODULES_DEFAULT: |
+        https://github.com/liyunfan1223/mod-playerbots.git master
+        https://github.com/azerothcore/mod-eluna.git master
+        https://github.com/azerothcore/mod-learn-spells.git master
+        https://github.com/azerothcore/mod-autobalance.git master
+        https://github.com/azerothcore/mod-auto-revive.git master
+      # 最终使用的变量（优先取手动输入，无输入则用默认值）
+      ACORE_REPO: ${{ github.event.inputs.acore_repo || env.ACORE_REPO_DEFAULT }}
+      ACORE_BRANCH: ${{ github.event.inputs.acore_branch || env.ACORE_BRANCH_DEFAULT }}
+      BUILD_TYPE: ${{ github.event.inputs.build_type || env.BUILD_TYPE_DEFAULT }}
+      MODULES_INPUT: ${{ github.event.inputs.modules || env.MODULES_DEFAULT }}
       MODULES_DIR: azerothcore/modules
 
     steps:
