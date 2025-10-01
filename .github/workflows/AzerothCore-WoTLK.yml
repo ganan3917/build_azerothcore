@@ -1,4 +1,4 @@
-name: 编译AzerothCore并发布到Releases
+name: 编译AzerothCore并输出到Annotations
 
 # 触发条件：手动触发 + 推送到main分支自动触发
 on:
@@ -17,7 +17,7 @@ on:
       build_type:
         description: "编译类型"
         required: true
-        default: "RelWithDebInfo"
+        default: "MinSizeRel"
         type: choice
         options:
           - Debug
@@ -27,12 +27,8 @@ on:
   push:
     branches: ["main"]
 
-# 权限配置（允许创建/删除Releases）
-permissions:
-  contents: write
-
 jobs:
-  build-and-release:
+  build-and-annotate:
     runs-on: ubuntu-22.04
     steps:
       - name: 检查系统架构（确保x86-64）
@@ -46,14 +42,8 @@ jobs:
       - name: 安装依赖（官方推荐）
         run: |
           sudo apt update -y
-          # 移除不必要的mysql-server，仅保留客户端开发库
           sudo apt install -y git cmake make gcc g++ clang libmysqlclient-dev libssl-dev \
             libbz2-dev libreadline-dev libncurses-dev libboost-all-dev libcurl4-openssl-dev
-          # 安装GitHub CLI（用于管理Releases）
-          type -p curl >/dev/null || sudo apt install curl -y
-          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-          sudo apt update -y && sudo apt install gh -y
 
       - name: 定义时间戳变量（用于命名）
         id: timestamp
@@ -72,7 +62,6 @@ jobs:
         run: |
           BUILD_TYPE="${{ github.event.inputs.build_type || 'RelWithDebInfo' }}"
           mkdir -p azerothcore/build && cd azerothcore/build
-          # 修复CMake参数错误（补充-D前缀，修正SCRIPTS拼写）
           cmake ../ -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
             -DCMAKE_INSTALL_PREFIX=../install \
             -DCMAKE_C_COMPILER=/usr/bin/clang \
@@ -91,42 +80,32 @@ jobs:
           make install
 
       - name: 打包编译结果（时间戳命名）
+        id: package
         run: |
           TIMESTAMP="${{ steps.timestamp.outputs.TIMESTAMP }}"
-          # 打包安装目录（包含可执行文件、配置、工具等）
+          # 打包安装目录
           tar -czvf acore-build-${TIMESTAMP}.tar.gz -C azerothcore/install .
-          echo "📦 打包完成：acore-build-${TIMESTAMP}.tar.gz"
+          # 获取包大小（用于Annotations）
+          PACKAGE_SIZE=$(du -h acore-build-${TIMESTAMP}.tar.gz | awk '{print $1}')
+          echo "PACKAGE_NAME=acore-build-${TIMESTAMP}.tar.gz" >> $GITHUB_OUTPUT
+          echo "PACKAGE_SIZE=$PACKAGE_SIZE" >> $GITHUB_OUTPUT
+          echo "📦 打包完成：acore-build-${TIMESTAMP}.tar.gz（大小：$PACKAGE_SIZE）"
 
-      - name: 创建GitHub Release并上传产物
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: 输出编译结果到Annotations
         run: |
-          TIMESTAMP="${{ steps.timestamp.outputs.TIMESTAMP }}"
-          REPO_BRANCH="${{ github.event.inputs.acore_branch || 'master' }}"
-          REPO_URL="${{ github.event.inputs.acore_repo || 'https://github.com/azerothcore/azerothcore-wotlk.git' }}"
-          # 创建Release标签（唯一标识）
-          TAG="build-${TIMESTAMP}"
-          # 发布描述（使用标准Markdown换行）
-          DESCRIPTION="自动编译于 $(date +'%Y-%m-%d %H:%M:%S')\n\n仓库: $REPO_URL\n分支: $REPO_BRANCH\n编译类型: ${{ github.event.inputs.build_type || 'RelWithDebInfo' }}"
-          # 创建Release并上传打包文件
-          gh release create "$TAG" \
-            --title "AzerothCore 编译产物 ${TIMESTAMP}" \
-            --body "$DESCRIPTION" \
-            --prerelease \
-            acore-build-${TIMESTAMP}.tar.gz
+          # GitHub Annotations格式：::notice|warning|error file=路径,line=行号::消息（支持Markdown）
+          echo "::notice title=编译产物信息::" >&2
+          echo "::notice::📦 产物名称：${{ steps.package.outputs.PACKAGE_NAME }}" >&2
+          echo "::notice::📊 产物大小：${{ steps.package.outputs.PACKAGE_SIZE }}" >&2
+          echo "::notice::🔗 编译来源：${{ github.event.inputs.acore_repo || 'https://github.com/azerothcore/azerothcore-wotlk.git' }}（分支：${{ github.event.inputs.acore_branch || 'master' }}）" >&2
+          echo "::notice::🔨 编译类型：${{ github.event.inputs.build_type || 'RelWithDebInfo' }}" >&2
+          echo "::notice::⏰ 编译时间：$(date +'%Y-%m-%d %H:%M:%S')" >&2
+        # 注意：Annotations需要输出到stderr（>&2）才能被GitHub识别
 
-      - name: 清理旧Releases（仅保留最新5个）
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # 列出所有Releases（按创建时间排序，最新在前），取第6个及以后的标签
-          OLD_TAGS=$(gh release list --exclude-drafts --limit 100 --json tagName --jq '.[5:].tagName | select(. != null)')
-          # 循环删除旧版本
-          while IFS= read -r TAG; do
-            if [ -n "$TAG" ]; then
-              echo "🗑️ 删除旧版本：$TAG"
-              gh release delete "$TAG" --yes
-              # 删除对应的git标签
-              git push origin --delete "$TAG"
-            fi
-          done <<< "$OLD_TAGS"
+      # 可选：将产物保存为工作流Artifact（方便下载）
+      - name: 保存产物为Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.PACKAGE_NAME }}
+          path: ${{ steps.package.outputs.PACKAGE_NAME }}
+          retention-days: 7  # 保留7天
