@@ -113,14 +113,6 @@ jobs:
         run: |
             tar -czvf acore-${{ steps.ts.outputs.utc }}.tar.gz -C azerothcore/install .
             echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
-            # 修正：用 du -b 输出字节数（无单位），仅保留纯数字
-            echo "size=$(du -b ${{ steps.package.outputs.name }} | awk '{print $1}')" >> $GITHUB_OUTPUT
-
-      - name: 输出到Annotations
-        run: |
-          # 单独获取带单位的大小用于显示
-          human_size=$(du -h ${{ steps.package.outputs.name }} | awk '{print $1}')
-          echo "::notice::📦 产物: ${{ steps.package.outputs.name }} (${human_size})" >&2
           
           # 格式化模块列表
           success=$(echo "${{ steps.modules.outputs.success }}" | tr ';' '\n')
