@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     permissions:
-      contents: write  # 发布Releases所需权限
+      contents: write  # 发布Releases权限
     env:
       ACORE_REPO: "https://github.com/liyunfan1223/azerothcore-wotlk.git"
       ACORE_BRANCH: "Playerbot"
@@ -24,52 +24,61 @@ jobs:
       RETAIN_COUNT: 3  # 保留最新3个Release
 
     steps:
-      - name: 检查架构
+      - name: 检查架构（仅x86_64）
         run: |
-          [ "$(uname -m)" = "x86_64" ] || { echo "❌ 仅支持x86_64"; exit 1; }
+          [ "$(uname -m)" = "x86_64" ] || { echo "❌ 仅支持x86_64架构"; exit 1; }
           echo "✅ 架构确认: x86_64"
 
       - name: 安装依赖
         run: |
           sudo apt update -y
           sudo apt install -y git cmake make gcc g++ clang libmysqlclient-dev libssl-dev \
-            libbz2-dev libreadline-dev libncurses-dev libboost-all-dev libcurl4-openssl-dev
+            libbz2-dev libreadline-dev libncurses-dev libboost-all-dev libcurl4-openssl-dev gh
 
-      - name: 生成时间戳与标签
+      - name: 生成时间戳与Release标签
         id: ts
         run: |
-          utc=$(date -u +%Y%m%d%H%M%S)
-          sh=$(TZ='Asia/Shanghai' date +%Y%m%d%H%M%S)
-          echo "utc=$utc" >> $GITHUB_OUTPUT
-          echo "sh=$sh" >> $GITHUB_OUTPUT
-          echo "tag=build-$utc" >> $GITHUB_OUTPUT  # 修复标签生成语法
+          # 完全在shell中计算时间，避免Actions表达式语法错误
+          UTC_TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
+          SH_TIMESTAMP=$(TZ='Asia/Shanghai' date +%Y%m%d%H%M%S)
+          RELEASE_TAG="build-$UTC_TIMESTAMP"
+          
+          # 输出到步骤变量，供后续引用
+          echo "utc=$UTC_TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "sh=$SH_TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
 
-      - name: 克隆核心仓库
+      - name: 克隆核心仓库与子模块
         run: |
           git clone --depth 1 --branch "$ACORE_BRANCH" "$ACORE_REPO" azerothcore
           cd azerothcore && git submodule update --init --recursive
 
-      - name: 拉取模块
+      - name: 拉取模块（记录成功/失败状态）
         id: modules
         run: |
           mkdir -p "$MODULES_DIR"
           success=()
           failure=()
+          
           while IFS= read -r line; do
             [ -z "$line" ] && continue
             repo=$(echo "$line" | awk '{print $1}')
             branch=$(echo "$line" | awk '{print $2}')
-            name=$(basename "$repo" .git)
-            if git clone --depth 1 --branch "$branch" "$repo" "$MODULES_DIR/$name"; then
-              success+=("$name")
+            mod_name=$(basename "$repo" .git)
+            
+            if git clone --depth 1 --branch "$branch" "$repo" "$MODULES_DIR/$mod_name"; then
+              success+=("$mod_name")
             else
-              failure+=("$name")
+              failure+=("$mod_name")
+              echo "⚠️ 模块 $mod_name 拉取失败"
             fi
           done <<< "$MODULES_INPUT"
+          
+          # 输出模块状态（逗号分隔，便于后续展示）
           echo "success=$(IFS=,; echo "${success[*]}")" >> $GITHUB_OUTPUT
           echo "failure=$(IFS=,; echo "${failure[*]}")" >> $GITHUB_OUTPUT
 
-      - name: 配置与编译
+      - name: 配置CMake + 编译安装
         run: |
           mkdir -p azerothcore/build && cd azerothcore/build
           cmake ../ \
@@ -80,37 +89,41 @@ jobs:
             -DTOOLS_BUILD=all -DSCRIPTS=static -DMODULES=static
           make -j$(nproc) && make install
 
-      - name: 打包产物
+      - name: 打包编译产物
         id: package
         run: |
-          tar -czvf acore-${{ steps.ts.outputs.utc }}.tar.gz -C azerothcore/install .
-          echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
+          PACKAGE_NAME="acore-${{ steps.ts.outputs.utc }}.tar.gz"
+          tar -czvf "$PACKAGE_NAME" -C azerothcore/install .
+          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
 
-      - name: 保存到Artifact
+      - name: 保存产物到Artifact（备份用）
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.package.outputs.name }}
           path: ${{ steps.package.outputs.name }}
           retention-days: 7
 
-      - name: 发布到Releases并清理旧版本
+      - name: 发布到Releases + 清理旧版本
         run: |
-          # 安装GitHub CLI
-          sudo apt install -y gh
+          # 1. 登录GitHub CLI（用内置Token，无需额外配置）
           echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
 
-          # 创建Release
+          # 2. 创建Release（含关键构建信息）
           gh release create ${{ steps.ts.outputs.tag }} \
-            --title "Build ${{ steps.ts.outputs.sh }}" \
-            --notes "北京时间: ${{ steps.ts.outputs.sh }} | 分支: $ACORE_BRANCH | 成功模块: ${{ steps.modules.outputs.success }}" \
+            --title "Build ${{ steps.ts.outputs.sh }}（北京时间）" \
+            --notes "核心分支: $ACORE_BRANCH | 成功模块: ${{ steps.modules.outputs.success }} | 失败模块: ${{ steps.modules.outputs.failure }}" \
             --prerelease
 
-          # 上传产物
+          # 3. 上传产物到Release
           gh release upload ${{ steps.ts.outputs.tag }} ${{ steps.package.outputs.name }} --clobber
 
-          # 清理旧版本（保留最新${RETAIN_COUNT}个）
-          tags=$(gh release list --limit 100 --json tagName --jq '.[] | select(.tagName | startswith("build-")) | .tagName' | head -n +$((RETAIN_COUNT + 10)))
-          echo "$tags" | tail -n +$((RETAIN_COUNT + 1)) | while read -r tag; do
-            gh release delete "$tag" --yes
-            git push origin --delete "$tag"
-          done
+          # 4. 清理旧Release（仅保留最新${RETAIN_COUNT}个）
+          gh release list --limit 100 --json tagName \
+            | jq -r '.[] | select(.tagName | startswith("build-")) | .tagName' \
+            | sort -r \
+            | tail -n +$((RETAIN_COUNT + 1)) \
+            | while read -r old_tag; do
+                echo "🗑️ 删除旧Release: $old_tag"
+                gh release delete "$old_tag" --yes
+                git push origin --delete "$old_tag"  # 同时删除对应标签
+              done
