@@ -1,4 +1,4 @@
-name: 编译AzerothCore（Windows x86-64）并输出到Annotations
+name: 编译AzerothCore（Windows x86-64，VS解决方案）
 
 on:
   workflow_dispatch:
@@ -27,10 +27,10 @@ on:
     branches: ["main"]
 
 jobs:
-  build-windows-x64:
-    runs-on: windows-2022  # 使用Windows Server 2022环境（支持x86-64）
+  build-with-vs:
+    runs-on: windows-2022
     steps:
-      - name: 检查系统架构（确保x86-64）
+      - name: 检查系统架构（x86-64）
         run: |
           $arch = (Get-CimInstance Win32_OperatingSystem).OSArchitecture
           if ($arch -ne "64-bit") {
@@ -40,20 +40,23 @@ jobs:
           Write-Host "✅ 确认架构：x86-64"
         shell: pwsh
 
-      - name: 安装依赖（通过Chocolatey）
+      - name: 安装依赖（VS2022 + 工具链）
         run: |
-          # 安装Chocolatey包管理器（若未安装）
+          # 安装Chocolatey包管理器
           if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
             Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
           }
-          # 安装编译依赖（适配Windows x64）
-          choco install -y git cmake 7zip visualstudio2022-build-tools boost-msvc-14.3 mysql-connector-c++ openssl bzip2
-          # 配置环境变量（确保工具可被找到）
-          echo "C:\Program Files\CMake\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "C:\Program Files\7-Zip" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          # 安装VS2022（含C++桌面开发组件）、CMake、依赖库
+          choco install -y git cmake 7zip visualstudio2022community --package-parameters "--installPath ""C:\Program Files\Microsoft Visual Studio\2022\Community"" --add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended"
+          choco install -y boost-msvc-14.3 mysql-connector-c++ openssl bzip2
+          
+          # 添加VS命令行工具到环境变量（确保devenv可用）
+          $vsPath = "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE"
+          echo "$vsPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Write-Host "✅ VS命令行工具路径：$vsPath"
         shell: pwsh
 
-      - name: 定义时间戳变量（用于命名）
+      - name: 定义时间戳变量
         id: timestamp
         run: |
           $timestamp = Get-Date -Format "yyyyMMddHHmmss"
@@ -70,66 +73,69 @@ jobs:
           git submodule update --init --recursive
         shell: pwsh
 
-      - name: 配置CMake（生成VS解决方案，目标x64）
+      - name: 生成VS2022 x64解决方案（CMake）
+        id: generate-sln
         run: |
           $buildType = "${{ github.event.inputs.build_type || 'RelWithDebInfo' }}"
           # 创建构建目录
           New-Item -Path azerothcore\build -ItemType Directory -Force | Out-Null
           cd azerothcore\build
-          # 生成VS2022解决方案（x64架构）
+          
+          # 生成VS2022 x64解决方案（.sln文件）
           cmake .. `
-            -G "Visual Studio 17 2022" `  # 指定VS2022生成器
-            -A x64 `                      # 目标架构：x86-64
-            -DCMAKE_BUILD_TYPE=$buildType `
+            -G "Visual Studio 17 2022" `  # 生成VS2022解决方案
+            -A x64 `                      # 目标架构x86-64
             -DCMAKE_INSTALL_PREFIX=../install `
             -DBUILD_SHARED_LIBS=OFF `
             -DWITH_WARNINGS=1 `
             -DTOOLS_BUILD=all `
             -DSCRIPTS=static `
             -DMODULES=static `
-            -DMySQL_INCLUDE_DIR="C:\Program Files\MySQL\MySQL Connector C++ 8.0\include" `  # MySQL头文件路径
-            -DMySQL_LIBRARY="C:\Program Files\MySQL\MySQL Connector C++ 8.0\lib64\mysqlcppconn8.lib"  # MySQL库路径
+            -DMySQL_INCLUDE_DIR="C:\Program Files\MySQL\MySQL Connector C++ 8.0\include" `
+            -DMySQL_LIBRARY="C:\Program Files\MySQL\MySQL Connector C++ 8.0\lib64\mysqlcppconn8.lib"
+          
+          # 获取生成的解决方案路径（通常为 AzerothCore.sln）
+          $slnPath = Get-ChildItem -Path . -Filter "*.sln" | Select-Object -First 1 -ExpandProperty FullName
+          echo "SLN_PATH=$slnPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "✅ 生成VS解决方案：$slnPath"
         shell: pwsh
 
-      - name: 编译项目（使用MSBuild）
+      - name: 用VS编译解决方案（devenv.com）
         run: |
           $buildType = "${{ github.event.inputs.build_type || 'RelWithDebInfo' }}"
-          cd azerothcore\build
-          # 使用MSBuild编译（多线程加速）
-          cmake --build . --config $buildType --parallel (Get-CimInstance Win32_Processor).NumberOfLogicalProcessors
-          # 安装编译产物到install目录
-          cmake --build . --config $buildType --target install
+          $slnPath = "${{ steps.generate-sln.outputs.SLN_PATH }}"
+          
+          # 调用VS命令行工具devenv编译解决方案（等效于在VS中打开并生成）
+          # 格式：devenv.com 解决方案路径 /Build "配置|平台"
+          devenv.com "$slnPath" /Build "${buildType}|x64" /Project INSTALL
+          
+          Write-Host "✅ 编译完成，产物已安装到 azerothcore/install 目录"
         shell: pwsh
 
-      - name: 打包编译结果（7-Zip压缩）
+      - name: 打包编译结果（7-Zip）
         id: package
         run: |
           $timestamp = "${{ steps.timestamp.outputs.TIMESTAMP }}"
-          $packageName = "acore-build-windows-x64-${timestamp}.zip"
-          # 压缩install目录（包含所有产物）
+          $packageName = "acore-build-vs-x64-${timestamp}.zip"
           7z a -tzip $packageName .\azerothcore\install\*
-          # 获取包大小（用于Annotations）
-          $packageSize = (Get-Item $packageName).Length / 1MB
-          $packageSize = [math]::Round($packageSize, 2)
+          $packageSize = [math]::Round((Get-Item $packageName).Length / 1MB, 2)
           echo "PACKAGE_NAME=$packageName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           echo "PACKAGE_SIZE=${packageSize} MB" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           Write-Host "📦 打包完成：$packageName（大小：$packageSize MB）"
         shell: pwsh
 
-      - name: 输出编译结果到Annotations
+      - name: 输出结果到Annotations
         run: |
-          # GitHub Annotations格式（输出到stderr）
-          Write-Error "::notice title=编译产物信息::" -ErrorAction Continue
+          Write-Error "::notice title=VS编译结果::" -ErrorAction Continue
           Write-Error "::notice::📦 产物名称：${{ steps.package.outputs.PACKAGE_NAME }}" -ErrorAction Continue
           Write-Error "::notice::📊 产物大小：${{ steps.package.outputs.PACKAGE_SIZE }}" -ErrorAction Continue
-          Write-Error "::notice::🔗 编译来源：${{ github.event.inputs.acore_repo || 'https://github.com/azerothcore/azerothcore-wotlk.git' }}（分支：${{ github.event.inputs.acore_branch || 'master' }}）" -ErrorAction Continue
           Write-Error "::notice::🔨 编译类型：${{ github.event.inputs.build_type || 'RelWithDebInfo' }}" -ErrorAction Continue
-          Write-Error "::notice::💻 目标架构：Windows x86-64" -ErrorAction Continue
-          Write-Error "::notice::⏰ 编译时间：$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ErrorAction Continue
+          Write-Error "::notice::💻 解决方案：${{ steps.generate-sln.outputs.SLN_PATH }}" -ErrorAction Continue
+          Write-Error "::notice::⏰ 完成时间：$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')" -ErrorAction Continue
         shell: pwsh
 
-      # 可选：保存产物为Artifact（保留7天，方便下载）
-      - name: 保存产物为Artifact
+      # 保存产物为Artifact（可选）
+      - name: 保存产物
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.package.outputs.PACKAGE_NAME }}
