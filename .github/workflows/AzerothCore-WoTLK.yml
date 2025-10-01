@@ -70,16 +70,7 @@ jobs:
         run: |
           BUILD_TYPE="${{ github.event.inputs.build_type || 'RelWithDebInfo' }}"
           mkdir -p azerothcore/build && cd azerothcore/build
-          cmake .. \
-            -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-            -DCMAKE_INSTALL_PREFIX=../install \
-            -DCMAKE_C_COMPILER=/usr/bin/clang \
-            -DCMAKE_CXX_COMPILER=/usr/bin/clang++ \
-            # -DBUILD_SHARED_LIBS=OFF \
-            # -DWITH_WARNINGS=1 \
-            -DTOOLS_BUILD=all \
-            -DSCRIPTS=static \
-            -DMODULES=static \
+          cmake ../ -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++ -DBUILD_SHARED_LIBS=OFF -DWITH_WARNINGS=1 DTOOLS_BUILD=all DSCRIPTS=static -DMODULES=static \
 
       - name: 编译项目
         run: |
