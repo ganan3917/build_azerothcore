@@ -46,7 +46,9 @@ jobs:
       - name: 安装依赖（官方推荐）
         run: |
           sudo apt update -y
-          sudo apt install -y git cmake make gcc g++ clang libmysqlclient-dev libssl-dev libbz2-dev libreadline-dev libncurses-dev mysql-server libboost-all-dev
+          # 移除不必要的mysql-server，仅保留客户端开发库
+          sudo apt install -y git cmake make gcc g++ clang libmysqlclient-dev libssl-dev \
+            libbz2-dev libreadline-dev libncurses-dev libboost-all-dev libcurl4-openssl-dev
           # 安装GitHub CLI（用于管理Releases）
           type -p curl >/dev/null || sudo apt install curl -y
           curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
@@ -70,7 +72,16 @@ jobs:
         run: |
           BUILD_TYPE="${{ github.event.inputs.build_type || 'RelWithDebInfo' }}"
           mkdir -p azerothcore/build && cd azerothcore/build
-          cmake ../ -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DCMAKE_INSTALL_PREFIX=../install -DCMAKE_C_COMPILER=/usr/bin/clang -DCMAKE_CXX_COMPILER=/usr/bin/clang++ -DBUILD_SHARED_LIBS=OFF -DWITH_WARNINGS=1 DTOOLS_BUILD=all DSCRIPTS=static -DMODULES=static \
+          # 修复CMake参数错误（补充-D前缀，修正SCRIPTS拼写）
+          cmake ../ -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+            -DCMAKE_INSTALL_PREFIX=../install \
+            -DCMAKE_C_COMPILER=/usr/bin/clang \
+            -DCMAKE_CXX_COMPILER=/usr/bin/clang++ \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DWITH_WARNINGS=1 \
+            -DTOOLS_BUILD=all \
+            -DSCRIPTS=static \
+            -DMODULES=static
 
       - name: 编译项目
         run: |
@@ -92,10 +103,11 @@ jobs:
         run: |
           TIMESTAMP="${{ steps.timestamp.outputs.TIMESTAMP }}"
           REPO_BRANCH="${{ github.event.inputs.acore_branch || 'master' }}"
+          REPO_URL="${{ github.event.inputs.acore_repo || 'https://github.com/azerothcore/azerothcore-wotlk.git' }}"
           # 创建Release标签（唯一标识）
           TAG="build-${TIMESTAMP}"
-          # 发布描述
-          DESCRIPTION="自动编译于 $(date +'%Y-%m-%d %H:%M:%S')\n仓库: ${{ github.event.inputs.acore_repo || '官方仓库' }}\n分支: $REPO_BRANCH"
+          # 发布描述（使用标准Markdown换行）
+          DESCRIPTION="自动编译于 $(date +'%Y-%m-%d %H:%M:%S')\n\n仓库: $REPO_URL\n分支: $REPO_BRANCH\n编译类型: ${{ github.event.inputs.build_type || 'RelWithDebInfo' }}"
           # 创建Release并上传打包文件
           gh release create "$TAG" \
             --title "AzerothCore 编译产物 ${TIMESTAMP}" \
@@ -107,12 +119,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 列出所有Releases（按创建时间排序，最新在前），排除草稿，取第6个及以后的标签
-          OLD_TAGS=$(gh release list --exclude-drafts --exclude-pre-releases=false --limit 100 --json tagName --jq '.[5:].tagName')
+          # 列出所有Releases（按创建时间排序，最新在前），取第6个及以后的标签
+          OLD_TAGS=$(gh release list --exclude-drafts --limit 100 --json tagName --jq '.[5:].tagName | select(. != null)')
           # 循环删除旧版本
-          for TAG in $OLD_TAGS; do
-            echo "🗑️ 删除旧版本：$TAG"
-            gh release delete "$TAG" --yes
-            # 删除对应的git标签
-            git push origin --delete "$TAG"
-          done
+          while IFS= read -r TAG; do
+            if [ -n "$TAG" ]; then
+              echo "🗑️ 删除旧版本：$TAG"
+              gh release delete "$TAG" --yes
+              # 删除对应的git标签
+              git push origin --delete "$TAG"
+            fi
+          done <<< "$OLD_TAGS"
