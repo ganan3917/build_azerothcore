@@ -1,0 +1,80 @@
+name: 自动清理Actions运行记录
+on:
+  # 定时触发：UTC时间17点 = 北京时间1点（每天执行）
+  schedule:
+    - cron: '0 17 * * *'
+  # 手动触发（用于测试，可选）
+  workflow_dispatch:
+
+jobs:
+  cleanup-runs:
+    runs-on: ubuntu-latest
+    permissions:
+      # 显式声明权限（增强安全性，可选）
+      actions: write
+      contents: read
+    steps:
+      # 步骤1：安装依赖（GitHub CLI + jq工具）
+      - name: 安装GitHub CLI和jq
+        run: |
+          # 安装jq（用于解析JSON数据）
+          sudo apt-get update && sudo apt-get install -y jq
+          # 安装GitHub CLI（用于调用API）
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          sudo apt-get update && sudo apt-get install -y gh
+
+      # 步骤2：配置GitHub CLI认证（使用内置Token）
+      - name: 配置GitHub认证
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
+          # 验证认证（可选，用于日志调试）
+          gh auth status
+
+      # 步骤3：执行清理逻辑（保留最新5个运行记录）
+      - name: 清理旧的Actions运行记录
+        run: |
+          # 1. 定义变量（无需修改）
+          OWNER="${{ github.repository_owner }}"  # 仓库所有者（自动获取）
+          REPO="${{ github.event.repository.name }}"  # 仓库名（自动获取）
+          KEEP_COUNT=5  # 保留最新的数量
+
+          # 2. 获取所有Workflow运行记录的ID（按创建时间倒序，最多100条，足够日常使用）
+          echo "正在获取仓库 $OWNER/$REPO 的所有Actions运行记录..."
+          RUN_IDS=$(gh api --method GET /repos/$OWNER/$REPO/actions/runs \
+            -F per_page=100 \
+            --jq '.workflow_runs | sort_by(.created_at) | reverse | map(.id) | .[]')
+
+          # 3. 检查是否有记录可清理
+          if [ -z "$RUN_IDS" ]; then
+            echo "未找到任何Actions运行记录，无需清理。"
+            exit 0
+          fi
+
+          # 4. 转换为数组，方便处理
+          IFS=$'\n' read -r -d '' -a RUN_ID_ARRAY <<< "$RUN_IDS"
+          TOTAL_RUNS=${#RUN_ID_ARRAY[@]}
+          echo "共找到 $TOTAL_RUNS 条运行记录，将保留最新 $KEEP_COUNT 条。"
+
+          # 5. 若记录数≤保留数，无需清理
+          if [ $TOTAL_RUNS -le $KEEP_COUNT ]; then
+            echo "运行记录数（$TOTAL_RUNS）≤ 保留数（$KEEP_COUNT），无需清理。"
+            exit 0
+          fi
+
+          # 6. 删除超出保留数的旧记录
+          echo "开始清理旧记录（从第 $((KEEP_COUNT + 1)) 条开始）..."
+          for ((i=KEEP_COUNT; i<TOTAL_RUNS; i++)); do
+            RUN_ID=${RUN_ID_ARRAY[$i]}
+            echo "正在删除运行记录 ID: $RUN_ID"
+            # 调用API删除记录（忽略临时错误，避免中断循环）
+            if gh api --method DELETE /repos/$OWNER/$REPO/actions/runs/$RUN_ID; then
+              echo "成功删除记录 ID: $RUN_ID"
+            else
+              echo "警告：删除记录 ID: $RUN_ID 失败，跳过继续。"
+            fi
+            # 加小延迟，避免触发API速率限制（可选）
+            sleep 1
+          done
+
+          echo "清理完成！当前保留最新 $KEEP_COUNT 条Actions运行记录。"
