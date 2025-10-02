@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "0 19 * * *"
+  # 显式配置GITHUB_TOKEN权限（关键修复）
+permissions:
+  contents: write  # 允许创建/删除Release和标签
 
 jobs:
   build:
@@ -19,9 +22,9 @@ jobs:
         https://github.com/azerothcore/mod-autobalance.git master
         https://github.com/azerothcore/mod-auto-revive.git master
       MODULES_DIR: azerothcore/modules
-      RETAIN_COUNT: 3  # 保留最新3个Release
+      RETAIN_COUNT: 3
       ARTIFACT_NAME: "azerothcore-build"
-      RELEASE_TAG: "build-$(date +%Y%m%d-%H%M%S)"  # 基于版本标签（时间戳）
+      RELEASE_TAG: "build-$(date +%Y%m%d-%H%M%S)"
 
     steps:
       - name: 检查架构（仅x86_64）
@@ -36,7 +39,7 @@ jobs:
         run: |
           sudo apt update -yq
           sudo apt install -yq \
-            git cmake make clang \
+            git cmake make clang zip \  # 新增zip（确保打包命令可用）
             libmysqlclient-dev libssl-dev libbz2-dev \
             libreadline-dev libncurses-dev libboost-all-dev \
             libcurl4-openssl-dev
@@ -89,10 +92,8 @@ jobs:
 
       - name: 打包构建产物
         run: |
-          # 进入安装目录打包（包含bin、etc、lib等核心文件）
           cd azerothcore/install
           zip -r "${{ env.ARTIFACT_NAME }}.zip" ./*
-          # 移动到根目录便于上传
           mv "${{ env.ARTIFACT_NAME }}.zip" ../../
 
       - name: 创建GitHub Release并上传产物
@@ -112,20 +113,19 @@ jobs:
 
       - name: 清理旧版本Release
         run: |
-          # 安装GitHub CLI工具（用于操作Release）
+          # 安装GitHub CLI
           type gh >/dev/null 2>&1 || {
             curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
             echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
             sudo apt update -yq && sudo apt install -yq gh
           }
           
-          # 配置GitHub认证（使用工作流内置令牌）
+          # 认证（使用带write权限的令牌）
           echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
           
-          # 获取所有Release标签（按创建时间倒序），跳过前N个保留版本，删除其余
+          # 清理旧版本
           gh release list --limit 100 --json tagName --jq '.[].tagName' | tail -n +$((RETAIN_COUNT + 1)) | while read -r tag; do
             echo "🗑️ 删除旧版本: $tag"
             gh release delete "$tag" --yes
-            # 同时删除对应的Git标签
             git push origin --delete "$tag"
           done
