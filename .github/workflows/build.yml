@@ -3,13 +3,11 @@ name: build_azerothcore
 on:
   workflow_dispatch:
   schedule:
-    - cron: 0 19 * * *
+    - cron: "0 19 * * *"
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-    permissions:
-      contents: write  # 发布Releases权限
     env:
       ACORE_REPO: "https://github.com/liyunfan1223/azerothcore-wotlk.git"
       ACORE_BRANCH: "Playerbot"
@@ -22,44 +20,34 @@ jobs:
         https://github.com/azerothcore/mod-auto-revive.git master
       MODULES_DIR: azerothcore/modules
       RETAIN_COUNT: 3  # 保留最新3个Release
+      ARTIFACT_NAME: "azerothcore-build"
+      RELEASE_TAG: "build-$(date +%Y%m%d-%H%M%S)"  # 基于版本标签（时间戳）
 
     steps:
       - name: 检查架构（仅x86_64）
         run: |
-          [ "$(uname -m)" = "x86_64" ] || { echo "❌ 仅支持x86_64架构"; exit 1; }
+          if [ "$(uname -m)" != "x86_64" ]; then
+            echo "❌ 仅支持x86_64架构"
+            exit 1
+          fi
           echo "✅ 架构确认: x86_64"
 
-      - name: 安装依赖（含最新gh和jq）
+      - name: 安装依赖
         run: |
-          sudo apt update -y
-          # 卸载旧版gh（若存在）
-          sudo apt remove -y gh || true
-          # 安装gh官方源（最新版）
-          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-          # 安装所有依赖（含jq）
-          sudo apt update -y
-          sudo apt install -y git cmake make gcc g++ clang libmysqlclient-dev libssl-dev \
-            libbz2-dev libreadline-dev libncurses-dev libboost-all-dev libcurl4-openssl-dev \
-            gh jq
-
-      - name: 生成时间戳与Release标签
-        id: ts
-        run: |
-          UTC_TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
-          SH_TIMESTAMP=$(TZ='Asia/Shanghai' date +%Y%m%d%H%M%S)
-          RELEASE_TAG="build-$UTC_TIMESTAMP"
-          echo "utc=$UTC_TIMESTAMP" >> $GITHUB_OUTPUT
-          echo "sh=$SH_TIMESTAMP" >> $GITHUB_OUTPUT
-          echo "tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
-          echo "生成的标签: $RELEASE_TAG"  # 调试输出
+          sudo apt update -yq
+          sudo apt install -yq \
+            git cmake make clang \
+            libmysqlclient-dev libssl-dev libbz2-dev \
+            libreadline-dev libncurses-dev libboost-all-dev \
+            libcurl4-openssl-dev
+          sudo apt clean
 
       - name: 克隆核心仓库与子模块
         run: |
           git clone --depth 1 --branch "$ACORE_BRANCH" "$ACORE_REPO" azerothcore
-          cd azerothcore && git submodule update --init --recursive
+          cd azerothcore && git submodule update --init --recursive --depth 1
 
-      - name: 拉取模块（记录成功/失败状态）
+      - name: 拉取模块
         id: modules
         run: |
           mkdir -p "$MODULES_DIR"
@@ -80,78 +68,64 @@ jobs:
             fi
           done <<< "$MODULES_INPUT"
           
-          echo "success=$(IFS=,; echo "${success[*]}")" >> $GITHUB_OUTPUT
-          echo "failure=$(IFS=,; echo "${failure[*]}")" >> $GITHUB_OUTPUT
+          echo "success=${success[*]}" | tr ' ' ',' >> $GITHUB_OUTPUT
+          echo "failure=${failure[*]}" | tr ' ' ',' >> $GITHUB_OUTPUT
 
-      - name: 配置CMake + 编译安装
+      - name: 配置与编译
         run: |
           mkdir -p azerothcore/build && cd azerothcore/build
           cmake ../ \
             -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
             -DCMAKE_INSTALL_PREFIX=../install \
-            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-            -DBUILD_SHARED_LIBS=OFF -DWITH_WARNINGS=1 \
-            -DTOOLS_BUILD=all -DSCRIPTS=static -DMODULES=static
-          make -j$(nproc) && make install
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DWITH_WARNINGS=1 \
+            -DTOOLS_BUILD=all \
+            -DSCRIPTS=static \
+            -DMODULES=static
+          make -j$(nproc)
+          make install
 
-      - name: 打包编译产物
-        id: package
+      - name: 打包构建产物
         run: |
-          PACKAGE_NAME="acore-${{ steps.ts.outputs.utc }}.tar.gz"
-          tar -czvf "$PACKAGE_NAME" -C azerothcore/install .
-          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
-          # 验证包是否生成
-          if [ -f "$PACKAGE_NAME" ]; then
-            echo "✅ 产物包生成成功: $PACKAGE_NAME"
-          else
-            echo "❌ 产物包生成失败"
-            exit 1
-          fi
+          # 进入安装目录打包（包含bin、etc、lib等核心文件）
+          cd azerothcore/install
+          zip -r "${{ env.ARTIFACT_NAME }}.zip" ./*
+          # 移动到根目录便于上传
+          mv "${{ env.ARTIFACT_NAME }}.zip" ../../
 
-      - name: 保存产物到Artifact（备份用）
-        uses: actions/upload-artifact@v4
+      - name: 创建GitHub Release并上传产物
+        uses: softprops/action-gh-release@v2
         with:
-          name: ${{ steps.package.outputs.name }}
-          path: ${{ steps.package.outputs.name }}
-          retention-days: 7
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: "自动构建 ${{ env.RELEASE_TAG }}"
+          body: |
+            ## 构建信息
+            - 核心分支: ${{ env.ACORE_BRANCH }}
+            - 成功集成模块: ${{ steps.modules.outputs.success }}
+            - 失败模块: ${{ steps.modules.outputs.failure || '无' }}
+            - 构建时间: ${{ github.run_at }}
+          files: ${{ env.ARTIFACT_NAME }}.zip
+          draft: false
+          prerelease: false
 
-      - name: 发布到Releases + 清理旧版本
+      - name: 清理旧版本Release
         run: |
-          set -x  # 输出所有执行命令，便于调试
+          # 安装GitHub CLI工具（用于操作Release）
+          type gh >/dev/null 2>&1 || {
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+            sudo apt update -yq && sudo apt install -yq gh
+          }
           
-          # 1. 验证GitHub CLI登录
+          # 配置GitHub认证（使用工作流内置令牌）
           echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-          gh auth status || { echo "❌ GitHub CLI登录失败"; exit 1; }
           
-          # 2. 创建Release（处理特殊字符）
-          NOTES=$(printf "核心分支: %s | 成功模块: %s | 失败模块: %s" \
-            "$ACORE_BRANCH" \
-            "${{ steps.modules.outputs.success }}" \
-            "${{ steps.modules.outputs.failure }}"
-          )
-          gh release create ${{ steps.ts.outputs.tag }} \
-            --title "Build ${{ steps.ts.outputs.sh }}（北京时间）" \
-            --notes "$NOTES" \
-            --prerelease || { echo "❌ 创建Release失败"; exit 1; }
-          
-          # 3. 上传产物到Release
-          PACKAGE_NAME="${{ steps.package.outputs.name }}"
-          if [ ! -f "$PACKAGE_NAME" ]; then
-            echo "❌ 产物文件不存在: $PACKAGE_NAME"
-            exit 1
-          fi
-          gh release upload ${{ steps.ts.outputs.tag }} "$PACKAGE_NAME" --clobber || { echo "❌ 上传产物失败"; exit 1; }
-          
-          # 4. 清理旧版本（保留最新${RETAIN_COUNT}个，容错处理）
-          gh release list --limit 100 --json tagName \
-            | jq -r '.[] | select(.tagName | startswith("build-")) | .tagName' \
-            | sort -r \
-            | tail -n +$((RETAIN_COUNT + 1)) \
-            | while read -r old_tag; do
-                if [ -n "$old_tag" ]; then
-                  echo "🗑️ 尝试删除旧Release: $old_tag"
-                  # 允许单个删除失败，避免中断整个流程
-                  gh release delete "$old_tag" --yes || echo "⚠️ 忽略删除Release $old_tag 失败"
-                  git push origin --delete "$old_tag" || echo "⚠️ 忽略删除标签 $old_tag 失败"
-                fi
-              done
+          # 获取所有Release标签（按创建时间倒序），跳过前N个保留版本，删除其余
+          gh release list --limit 100 --json tagName --jq '.[].tagName' | tail -n +$((RETAIN_COUNT + 1)) | while read -r tag; do
+            echo "🗑️ 删除旧版本: $tag"
+            gh release delete "$tag" --yes
+            # 同时删除对应的Git标签
+            git push origin --delete "$tag"
+          done
