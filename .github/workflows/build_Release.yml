@@ -140,11 +140,11 @@ jobs:
         with:
           token: ${{ env.RELEASE_TOKEN }}  # 使用环境变量中的权限令牌
           tag_name: build-${{ steps.ts.outputs.utc }}
-          name: 自动构建 ${{ steps.ts.outputs.sh }}
+          name: 每天自动构建 ${{ steps.ts.outputs.sh }}
           body: |
-            ## 自动构建产物（${{ steps.ts.outputs.sh }}）
+            ### Azerothcore-Wotlk For Linux X86-64（${{ steps.ts.outputs.sh }}）
             - 核心分支：${{ env.ACORE_BRANCH }}
-            - 成功集成模块：${{ steps.modules.outputs.success }}
+            - 集成模块：${{ steps.modules.outputs.success }}
             - 失败模块：${{ steps.modules.outputs.failure || '无' }}
           files: ${{ steps.package.outputs.name }}
           draft: false
