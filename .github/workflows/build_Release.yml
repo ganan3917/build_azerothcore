@@ -3,15 +3,13 @@ name: build_azerothcore
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 19 * * *"
-  # 显式配置GITHUB_TOKEN权限（关键修复）
-permissions:
-  contents: write  # 允许创建/删除Release和标签
+    - cron: 0 19 * * *
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     env:
+      # 核心配置参数（集中管理）
       ACORE_REPO: "https://github.com/liyunfan1223/azerothcore-wotlk.git"
       ACORE_BRANCH: "Playerbot"
       BUILD_TYPE: "MinSizeRel"
@@ -22,33 +20,49 @@ jobs:
         https://github.com/azerothcore/mod-autobalance.git master
         https://github.com/azerothcore/mod-auto-revive.git master
       MODULES_DIR: azerothcore/modules
-      RETAIN_COUNT: 3
-      ARTIFACT_NAME: "azerothcore-build"
-      RELEASE_TAG: "build-$(date +%Y%m%d-%H%M%S)"
 
     steps:
       - name: 检查架构（仅x86_64）
         run: |
-          if [ "$(uname -m)" != "x86_64" ]; then
-            echo "❌ 仅支持x86_64架构"
-            exit 1
-          fi
-          echo "✅ 架构确认: x86_64"
+          [ "$(uname -m)" = "x86_64" ] || { 
+            echo "❌ 仅支持x86_64架构"; 
+            exit 1; 
+          }
+          echo "✅ 确认架构：x86_64"
 
       - name: 安装依赖
         run: |
-          sudo apt update -yq
-          sudo apt install -yq \
-            git cmake make clang zip \  # 新增zip（确保打包命令可用）
-            libmysqlclient-dev libssl-dev libbz2-dev \
-            libreadline-dev libncurses-dev libboost-all-dev \
+          sudo apt update -y
+          sudo apt install -y \
+            git \
+            cmake \
+            make \
+            gcc \
+            g++ \
+            clang \
+            libmysqlclient-dev \
+            libssl-dev \
+            libbz2-dev \
+            libreadline-dev \
+            libncurses-dev \
+            libboost-all-dev \
             libcurl4-openssl-dev
-          sudo apt clean
 
-      - name: 克隆核心仓库与子模块
+      - name: 生成时间戳
+        id: ts
         run: |
-          git clone --depth 1 --branch "$ACORE_BRANCH" "$ACORE_REPO" azerothcore
-          cd azerothcore && git submodule update --init --recursive --depth 1
+          echo "utc=$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+          echo "sh=$(TZ='Asia/Shanghai' date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+
+      - name: 克隆核心仓库
+        run: |
+          echo "🔧 克隆仓库：$ACORE_REPO（分支：$ACORE_BRANCH）"
+          git clone \
+            --depth 1 \
+            --branch "$ACORE_BRANCH" \
+            "$ACORE_REPO" \
+            azerothcore
+          cd azerothcore && git submodule update --init --recursive
 
       - name: 拉取模块
         id: modules
@@ -57,24 +71,30 @@ jobs:
           success=()
           failure=()
           
+          echo "📦 处理模块列表..."
           while IFS= read -r line; do
             [ -z "$line" ] && continue
             repo=$(echo "$line" | awk '{print $1}')
             branch=$(echo "$line" | awk '{print $2}')
-            mod_name=$(basename "$repo" .git)
+            name=$(basename "$repo" .git)
+            path="$MODULES_DIR/$name"
             
-            if git clone --depth 1 --branch "$branch" "$repo" "$MODULES_DIR/$mod_name"; then
-              success+=("$mod_name")
+            if git clone \
+              --depth 1 \
+              --branch "$branch" \
+              "$repo" \
+              "$path"; then
+              success+=("$name（$branch）")
             else
-              failure+=("$mod_name")
-              echo "⚠️ 模块 $mod_name 拉取失败"
+              failure+=("$name（$branch）")
+              echo "⚠️ 模块 $name 拉取失败"
             fi
           done <<< "$MODULES_INPUT"
           
-          echo "success=${success[*]}" | tr ' ' ',' >> $GITHUB_OUTPUT
-          echo "failure=${failure[*]}" | tr ' ' ',' >> $GITHUB_OUTPUT
+          echo "success=$(IFS=';'; echo "${success[*]}")" >> $GITHUB_OUTPUT
+          echo "failure=$(IFS=';'; echo "${failure[*]}")" >> $GITHUB_OUTPUT
 
-      - name: 配置与编译
+      - name: 配置CMake
         run: |
           mkdir -p azerothcore/build && cd azerothcore/build
           cmake ../ \
@@ -87,45 +107,55 @@ jobs:
             -DTOOLS_BUILD=all \
             -DSCRIPTS=static \
             -DMODULES=static
-          make -j$(nproc)
-          make install
 
-      - name: 打包构建产物
+      - name: 编译安装
         run: |
-          cd azerothcore/install
-          zip -r "${{ env.ARTIFACT_NAME }}.zip" ./*
-          mv "${{ env.ARTIFACT_NAME }}.zip" ../../
+          cd azerothcore/build
+          echo "🚀 开始编译（$(nproc)核心）"
+          make -j$(nproc) && make install
 
-      - name: 创建GitHub Release并上传产物
+      - name: 打包产物
+        id: package
+        run: |
+          tar -czvf \
+            acore-${{ steps.ts.outputs.utc }}.tar.gz \
+            -C azerothcore/install .
+          echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
+
+      - name: 保存产物到Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: ${{ steps.package.outputs.name }}
+          retention-days: 7
+
+      - name: 上传产物到Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          name: "自动构建 ${{ env.RELEASE_TAG }}"
+          tag_name: build-${{ steps.ts.outputs.utc }}  # 用时间戳作为标签名
+          name: 自动构建 ${{ steps.ts.outputs.sh }}  # 显示北京时间
           body: |
-            ## 构建信息
-            - 核心分支: ${{ env.ACORE_BRANCH }}
-            - 成功集成模块: ${{ steps.modules.outputs.success }}
-            - 失败模块: ${{ steps.modules.outputs.failure || '无' }}
-            - 构建时间: ${{ github.run_at }}
-          files: ${{ env.ARTIFACT_NAME }}.zip
+            ## 自动构建产物（${{ steps.ts.outputs.sh }}）
+            - 核心分支：${{ env.ACORE_BRANCH }}
+            - 成功集成模块：${{ steps.modules.outputs.success }}
+            - 失败模块：${{ steps.modules.outputs.failure || '无' }}
+          files: ${{ steps.package.outputs.name }}  # 上传压缩包
           draft: false
           prerelease: false
 
-      - name: 清理旧版本Release
+      - name: 清理旧Releases（保留最新3份）
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 安装GitHub CLI
-          type gh >/dev/null 2>&1 || {
-            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-            sudo apt update -yq && sudo apt install -yq gh
-          }
+          # 获取仓库所有Releases（按创建时间排序，最新的在前）
+          releases=$(gh api repos/{owner}/{repo}/releases | jq -r '.[] | .id')
+          # 转换为数组并跳过前3个（保留最新3份）
+          release_ids=($releases)
+          echo "共找到 ${#release_ids[@]} 个Releases，保留最新3个，删除其余..."
           
-          # 认证（使用带write权限的令牌）
-          echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-          
-          # 清理旧版本
-          gh release list --limit 100 --json tagName --jq '.[].tagName' | tail -n +$((RETAIN_COUNT + 1)) | while read -r tag; do
-            echo "🗑️ 删除旧版本: $tag"
-            gh release delete "$tag" --yes
-            git push origin --delete "$tag"
+          # 从第4个开始删除（索引从0开始，从3开始删除）
+          for ((i=3; i<${#release_ids[@]}; i++)); do
+            id=${release_ids[$i]}
+            echo "删除旧Release: $id"
+            gh api -X DELETE repos/{owner}/{repo}/releases/$id
           done
