@@ -8,6 +8,9 @@ on:
 jobs:
   Cleaning:
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write  # 授予删除Releases和标签的权限
+      actions: write   # 授予删除工作流运行记录的权限
 
     steps:
     - name: Delete Old Workflows
@@ -23,4 +26,4 @@ jobs:
         keep_latest: 3
         delete_tags: true
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 移除多余的句号
