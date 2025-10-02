@@ -125,7 +125,7 @@ jobs:
         run: |
           tar -czvf \
             acore-${{ steps.ts.outputs.utc }}.tar.gz \
-            -C "$INSTALL_DIR" .
+            -C "$BUILD_DIR" .
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
 
       - name: 保存产物到Artifact
