@@ -29,24 +29,30 @@ jobs:
           [ "$(uname -m)" = "x86_64" ] || { echo "❌ 仅支持x86_64架构"; exit 1; }
           echo "✅ 架构确认: x86_64"
 
-      - name: 安装依赖
+      - name: 安装依赖（含最新gh和jq）
         run: |
           sudo apt update -y
+          # 卸载旧版gh（若存在）
+          sudo apt remove -y gh || true
+          # 安装gh官方源（最新版）
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          # 安装所有依赖（含jq）
+          sudo apt update -y
           sudo apt install -y git cmake make gcc g++ clang libmysqlclient-dev libssl-dev \
-            libbz2-dev libreadline-dev libncurses-dev libboost-all-dev libcurl4-openssl-dev gh
+            libbz2-dev libreadline-dev libncurses-dev libboost-all-dev libcurl4-openssl-dev \
+            gh jq
 
       - name: 生成时间戳与Release标签
         id: ts
         run: |
-          # 完全在shell中计算时间，避免Actions表达式语法错误
           UTC_TIMESTAMP=$(date -u +%Y%m%d%H%M%S)
           SH_TIMESTAMP=$(TZ='Asia/Shanghai' date +%Y%m%d%H%M%S)
           RELEASE_TAG="build-$UTC_TIMESTAMP"
-          
-          # 输出到步骤变量，供后续引用
           echo "utc=$UTC_TIMESTAMP" >> $GITHUB_OUTPUT
           echo "sh=$SH_TIMESTAMP" >> $GITHUB_OUTPUT
           echo "tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "生成的标签: $RELEASE_TAG"  # 调试输出
 
       - name: 克隆核心仓库与子模块
         run: |
@@ -74,7 +80,6 @@ jobs:
             fi
           done <<< "$MODULES_INPUT"
           
-          # 输出模块状态（逗号分隔，便于后续展示）
           echo "success=$(IFS=,; echo "${success[*]}")" >> $GITHUB_OUTPUT
           echo "failure=$(IFS=,; echo "${failure[*]}")" >> $GITHUB_OUTPUT
 
@@ -95,6 +100,13 @@ jobs:
           PACKAGE_NAME="acore-${{ steps.ts.outputs.utc }}.tar.gz"
           tar -czvf "$PACKAGE_NAME" -C azerothcore/install .
           echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+          # 验证包是否生成
+          if [ -f "$PACKAGE_NAME" ]; then
+            echo "✅ 产物包生成成功: $PACKAGE_NAME"
+          else
+            echo "❌ 产物包生成失败"
+            exit 1
+          fi
 
       - name: 保存产物到Artifact（备份用）
         uses: actions/upload-artifact@v4
@@ -105,25 +117,41 @@ jobs:
 
       - name: 发布到Releases + 清理旧版本
         run: |
-          # 1. 登录GitHub CLI（用内置Token，无需额外配置）
+          set -x  # 输出所有执行命令，便于调试
+          
+          # 1. 验证GitHub CLI登录
           echo "${{ secrets.GITHUB_TOKEN }}" | gh auth login --with-token
-
-          # 2. 创建Release（含关键构建信息）
+          gh auth status || { echo "❌ GitHub CLI登录失败"; exit 1; }
+          
+          # 2. 创建Release（处理特殊字符）
+          NOTES=$(printf "核心分支: %s | 成功模块: %s | 失败模块: %s" \
+            "$ACORE_BRANCH" \
+            "${{ steps.modules.outputs.success }}" \
+            "${{ steps.modules.outputs.failure }}"
+          )
           gh release create ${{ steps.ts.outputs.tag }} \
             --title "Build ${{ steps.ts.outputs.sh }}（北京时间）" \
-            --notes "核心分支: $ACORE_BRANCH | 成功模块: ${{ steps.modules.outputs.success }} | 失败模块: ${{ steps.modules.outputs.failure }}" \
-            --prerelease
-
+            --notes "$NOTES" \
+            --prerelease || { echo "❌ 创建Release失败"; exit 1; }
+          
           # 3. 上传产物到Release
-          gh release upload ${{ steps.ts.outputs.tag }} ${{ steps.package.outputs.name }} --clobber
-
-          # 4. 清理旧Release（仅保留最新${RETAIN_COUNT}个）
+          PACKAGE_NAME="${{ steps.package.outputs.name }}"
+          if [ ! -f "$PACKAGE_NAME" ]; then
+            echo "❌ 产物文件不存在: $PACKAGE_NAME"
+            exit 1
+          fi
+          gh release upload ${{ steps.ts.outputs.tag }} "$PACKAGE_NAME" --clobber || { echo "❌ 上传产物失败"; exit 1; }
+          
+          # 4. 清理旧版本（保留最新${RETAIN_COUNT}个，容错处理）
           gh release list --limit 100 --json tagName \
             | jq -r '.[] | select(.tagName | startswith("build-")) | .tagName' \
             | sort -r \
             | tail -n +$((RETAIN_COUNT + 1)) \
             | while read -r old_tag; do
-                echo "🗑️ 删除旧Release: $old_tag"
-                gh release delete "$old_tag" --yes
-                git push origin --delete "$old_tag"  # 同时删除对应标签
+                if [ -n "$old_tag" ]; then
+                  echo "🗑️ 尝试删除旧Release: $old_tag"
+                  # 允许单个删除失败，避免中断整个流程
+                  gh release delete "$old_tag" --yes || echo "⚠️ 忽略删除Release $old_tag 失败"
+                  git push origin --delete "$old_tag" || echo "⚠️ 忽略删除标签 $old_tag 失败"
+                fi
               done
