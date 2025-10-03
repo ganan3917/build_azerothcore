@@ -1,4 +1,4 @@
-name: build_azerothcore
+name: build_azerothcore1
 
 on:
   workflow_dispatch:
