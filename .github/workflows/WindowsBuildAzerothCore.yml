@@ -89,14 +89,14 @@ jobs:
           # 检查目标目录是否存在，避免打包失败
           required_dirs=("bin" "etc" "lib" "include")
           for dir in "${required_dirs[@]}"; do
-            if [ ! -d "$INSTALL_DIR/$dir" ]; then
-              echo "❌ 目录 $INSTALL_DIR/$dir 不存在，打包失败"
+            if [ ! -d "$BUILD_DIR/$dir" ]; then
+              echo "❌ 目录 $BUILD_DIR/$dir 不存在，打包失败"
               exit 1
             fi
           done
           # 打包时仅包含这四个子目录，保留相对路径结构
           tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" \
-            -C "$INSTALL_DIR" \
+            -C "$BUILD_DIR" \
             bin etc lib include
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
 
