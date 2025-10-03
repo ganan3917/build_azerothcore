@@ -123,9 +123,10 @@ jobs:
       - name: 打包产物
         id: package
         run: |
+          cd "$BUILD_DIR"
           tar -czvf \
             acore-${{ steps.ts.outputs.utc }}.tar.gz \
-            -C "$INSTALL_DIR" .
+            -C "$BUILD_DIR" .
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
 
       - name: 保存产物到Artifact
@@ -146,6 +147,7 @@ jobs:
             - 核心分支：${{ env.ACORE_BRANCH }}
             - 集成模块：${{ steps.modules.outputs.success }}
             - 失败模块：${{ steps.modules.outputs.failure || '无' }}
+            - 数据文件：暂未提供 （map、mmap、dbc、vmap）
           files: ${{ steps.package.outputs.name }}
           draft: false
           prerelease: false
