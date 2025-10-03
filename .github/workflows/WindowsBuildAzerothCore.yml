@@ -1,1 +1,132 @@
+name: build_azerothcore
 
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 19 * * *
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      # 统一路径配置（核心目录为azerothcore，子目录分离）
+      ROOT_DIR: azerothcore          # 克隆根目录
+      BUILD_DIR: azerothcore/build   # 编译目录
+      INSTALL_DIR: azerothcore/install # 安装目录
+      MODULES_DIR: azerothcore/modules # 模块目录
+      # 核心配置
+      ACORE_REPO: "https://github.com/liyunfan1223/azerothcore-wotlk.git"
+      ACORE_BRANCH: "Playerbot"
+      BUILD_TYPE: "MinSizeRel"
+      MODULES_INPUT: |
+        https://github.com/liyunfan1223/mod-playerbots.git master
+        https://github.com/azerothcore/mod-eluna.git master
+        https://github.com/azerothcore/mod-learn-spells.git master
+        https://github.com/azerothcore/mod-autobalance.git master
+        https://github.com/azerothcore/mod-auto-revive.git master
+      RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+
+    steps:
+      - name: 检查架构（仅x86_64）
+        run: |
+          [ "$(uname -m)" = "x86_64" ] || { echo "❌ 仅支持x86_64"; exit 1; }
+          echo "✅ 确认架构：x86_64"
+
+      - name: 安装依赖
+        run: |
+          sudo apt update -y
+          sudo apt install -y git cmake make clang libmysqlclient-dev libssl-dev \
+            libbz2-dev libreadline-dev libncurses-dev libboost-all-dev libcurl4-openssl-dev gh
+
+      - name: 生成时间戳
+        id: ts
+        run: |
+          echo "utc=$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+          echo "sh=$(TZ='Asia/Shanghai' date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+
+      - name: 克隆核心仓库
+        run: |
+          git clone --depth 1 --branch "$ACORE_BRANCH" "$ACORE_REPO" "$ROOT_DIR"
+          cd "$ROOT_DIR" && git submodule update --init --recursive
+
+      - name: 拉取模块
+        id: modules
+        run: |
+          mkdir -p "$MODULES_DIR"
+          success=()
+          failure=()
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            repo=$(echo "$line" | awk '{print $1}')
+            branch=$(echo "$line" | awk '{print $2}')
+            name=$(basename "$repo" .git)
+            if git clone --depth 1 --branch "$branch" "$repo" "$MODULES_DIR/$name"; then
+              success+=("$name（$branch）")
+            else
+              failure+=("$name（$branch）")
+            fi
+          done <<< "$MODULES_INPUT"
+          echo "success=$(IFS=';'; echo "${success[*]}")" >> $GITHUB_OUTPUT
+          echo "failure=$(IFS=';'; echo "${failure[*]}")" >> $GITHUB_OUTPUT
+
+      - name: 配置与编译
+        run: |
+          mkdir -p "$BUILD_DIR" && cd "$BUILD_DIR"
+          cmake ../ \
+            -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+            -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DWITH_WARNINGS=1 \
+            -DTOOLS_BUILD=all \
+            -DSCRIPTS=static \
+            -DMODULES=static
+          make -j$(nproc) && make install
+
+      - name: 打包指定子目录（bin、etc、lib、include）
+        id: package
+        run: |
+          # 检查目标目录是否存在，避免打包失败
+          required_dirs=("bin" "etc" "lib" "include")
+          for dir in "${required_dirs[@]}"; do
+            if [ ! -d "$INSTALL_DIR/$dir" ]; then
+              echo "❌ 目录 $INSTALL_DIR/$dir 不存在，打包失败"
+              exit 1
+            fi
+          done
+          # 打包时仅包含这四个子目录，保留相对路径结构
+          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" \
+            -C "$INSTALL_DIR" \
+            bin etc lib include
+          echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
+
+      - name: 保存产物到Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: ${{ steps.package.outputs.name }}
+          retention-days: 3
+
+      - name: 上传到Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ env.RELEASE_TOKEN }}
+          tag_name: build-${{ steps.ts.outputs.utc }}
+          name: 自动构建 ${{ steps.ts.outputs.sh }}
+          body: |
+            ### Azerothcore-Wotlk 构建（${{ steps.ts.outputs.sh }}）
+            - 核心分支：${{ env.ACORE_BRANCH }}
+            - 集成模块：${{ steps.modules.outputs.success || '无' }}
+            - 失败模块：${{ steps.modules.outputs.failure || '无' }}
+            - 打包内容：bin（执行文件）、etc（配置文件）、lib（依赖库）、include（头文件）
+          files: ${{ steps.package.outputs.name }}
+
+      - name: 清理旧Releases（保留最新3个）
+        run: |
+          echo "${{ env.RELEASE_TOKEN }}" | gh auth login --with-token
+          repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+          releases=$(gh api repos/$repo/releases | jq -r '.[] | .id')
+          ids=($releases)
+          for ((i=3; i<${#ids[@]}; i++)); do
+            gh api -X DELETE repos/$repo/releases/${ids[$i]}
+          done
