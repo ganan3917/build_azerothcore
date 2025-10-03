@@ -126,6 +126,8 @@ jobs:
             acore-${{ steps.ts.outputs.utc }}.tar.gz \
             /etc \
             /bin \
+            /include \
+            /lib \
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
 
       - name: 保存产物到Artifact
