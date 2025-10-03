@@ -122,10 +122,10 @@ jobs:
       - name: 打包产物
         id: package
         run: |
-          cd "$INSTALL_DIR"
           tar -czvf \
             acore-${{ steps.ts.outputs.utc }}.tar.gz \
-            -C "$BUILD_DIR" .
+            /etc \
+            /bin \
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
 
       - name: 保存产物到Artifact
@@ -133,7 +133,7 @@ jobs:
         with:
           name: ${{ steps.package.outputs.name }}
           path: ${{ steps.package.outputs.name }}
-          retention-days: 7
+          retention-days: 3
 
       - name: 上传产物到Releases
         uses: softprops/action-gh-release@v2
