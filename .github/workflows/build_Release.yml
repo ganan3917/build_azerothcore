@@ -9,7 +9,12 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     env:
-      # 核心配置参数（集中管理）
+      # 统一路径配置（核心目录为azerothcore，子目录分离）
+      ROOT_DIR: azerothcore          # 克隆根目录
+      BUILD_DIR: azerothcore/build   # 编译目录
+      INSTALL_DIR: azerothcore/install # 安装目录
+      MODULES_DIR: azerothcore/modules # 模块目录
+      # 核心配置
       ACORE_REPO: "https://github.com/liyunfan1223/azerothcore-wotlk.git"
       ACORE_BRANCH: "Playerbot"
       BUILD_TYPE: "MinSizeRel"
@@ -19,40 +24,19 @@ jobs:
         https://github.com/azerothcore/mod-learn-spells.git master
         https://github.com/azerothcore/mod-autobalance.git master
         https://github.com/azerothcore/mod-auto-revive.git master
-      MODULES_DIR: azerothcore/modules
-      # 路径配置
-      INSTALL_DIR: azerothcore/install
-      BUILD_DIR: azerothcore/build
-      # 权限相关（需在仓库 Settings -> Secrets 中添加 RELEASE_TOKEN）
       RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
 
     steps:
       - name: 检查架构（仅x86_64）
         run: |
-          [ "$(uname -m)" = "x86_64" ] || { 
-            echo "❌ 仅支持x86_64架构"; 
-            exit 1; 
-          }
+          [ "$(uname -m)" = "x86_64" ] || { echo "❌ 仅支持x86_64"; exit 1; }
           echo "✅ 确认架构：x86_64"
 
       - name: 安装依赖
         run: |
           sudo apt update -y
-          sudo apt install -y \
-            git \
-            cmake \
-            make \
-            gcc \
-            g++ \
-            clang \
-            libmysqlclient-dev \
-            libssl-dev \
-            libbz2-dev \
-            libreadline-dev \
-            libncurses-dev \
-            libboost-all-dev \
-            libcurl4-openssl-dev \
-            gh  # 安装GitHub CLI（用于清理旧Releases）
+          sudo apt install -y git cmake make clang libmysqlclient-dev libssl-dev \
+            libbz2-dev libreadline-dev libncurses-dev libboost-all-dev libcurl4-openssl-dev gh
 
       - name: 生成时间戳
         id: ts
@@ -62,13 +46,8 @@ jobs:
 
       - name: 克隆核心仓库
         run: |
-          echo "🔧 克隆仓库：$ACORE_REPO（分支：$ACORE_BRANCH）"
-          git clone \
-            --depth 1 \
-            --branch "$ACORE_BRANCH" \
-            "$ACORE_REPO" \
-            azerothcore
-          cd azerothcore && git submodule update --init --recursive
+          git clone --depth 1 --branch "$ACORE_BRANCH" "$ACORE_REPO" "$ROOT_DIR"
+          cd "$ROOT_DIR" && git submodule update --init --recursive
 
       - name: 拉取模块
         id: modules
@@ -76,31 +55,21 @@ jobs:
           mkdir -p "$MODULES_DIR"
           success=()
           failure=()
-          
-          echo "📦 处理模块列表..."
           while IFS= read -r line; do
             [ -z "$line" ] && continue
             repo=$(echo "$line" | awk '{print $1}')
             branch=$(echo "$line" | awk '{print $2}')
             name=$(basename "$repo" .git)
-            path="$MODULES_DIR/$name"
-            
-            if git clone \
-              --depth 1 \
-              --branch "$branch" \
-              "$repo" \
-              "$path"; then
+            if git clone --depth 1 --branch "$branch" "$repo" "$MODULES_DIR/$name"; then
               success+=("$name（$branch）")
             else
               failure+=("$name（$branch）")
-              echo "⚠️ 模块 $name 拉取失败"
             fi
           done <<< "$MODULES_INPUT"
-          
           echo "success=$(IFS=';'; echo "${success[*]}")" >> $GITHUB_OUTPUT
           echo "failure=$(IFS=';'; echo "${failure[*]}")" >> $GITHUB_OUTPUT
 
-      - name: 配置CMake
+      - name: 配置与编译
         run: |
           mkdir -p "$BUILD_DIR" && cd "$BUILD_DIR"
           cmake ../ \
@@ -112,19 +81,12 @@ jobs:
             -DTOOLS_BUILD=all \
             -DSCRIPTS=static \
             -DMODULES=static
-
-      - name: 编译安装
-        run: |
-          cd "$BUILD_DIR"
-          echo "🚀 开始编译（$(nproc)核心）"
           make -j$(nproc) && make install
 
-      - name: 打包产物
+      - name: 打包安装目录产物
         id: package
         run: |
-          tar -czvf \
-            acore-${{ steps.ts.outputs.utc }}.tar.gz \
-            -C "$BUILD_DIR" .
+          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" -C "$INSTALL_DIR" .
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
 
       - name: 保存产物到Artifact
@@ -134,38 +96,25 @@ jobs:
           path: ${{ steps.package.outputs.name }}
           retention-days: 3
 
-      - name: 上传产物到Releases
+      - name: 上传到Releases
         uses: softprops/action-gh-release@v2
         with:
-          token: ${{ env.RELEASE_TOKEN }}  # 使用环境变量中的权限令牌
+          token: ${{ env.RELEASE_TOKEN }}
           tag_name: build-${{ steps.ts.outputs.utc }}
-          name: 每天自动构建 ${{ steps.ts.outputs.sh }}
+          name: 自动构建 ${{ steps.ts.outputs.sh }}
           body: |
-            ### Azerothcore-Wotlk For Linux X86-64（${{ steps.ts.outputs.sh }}）
+            ### Azerothcore-Wotlk 构建（${{ steps.ts.outputs.sh }}）
             - 核心分支：${{ env.ACORE_BRANCH }}
-            - 集成模块：${{ steps.modules.outputs.success }}
+            - 集成模块：${{ steps.modules.outputs.success || '无' }}
             - 失败模块：${{ steps.modules.outputs.failure || '无' }}
-            - 数据文件：暂未提供 （map、mmap、dbc、vmap、Cameras）
           files: ${{ steps.package.outputs.name }}
-          draft: false
-          prerelease: false
 
-      - name: 清理旧Releases（保留最新3份）
+      - name: 清理旧Releases（保留最新3个）
         run: |
-          # 配置GitHub CLI使用指定令牌
           echo "${{ env.RELEASE_TOKEN }}" | gh auth login --with-token
-          
-          # 获取仓库信息（从环境变量自动获取当前仓库）
-          repo_full_name=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
-          
-          # 获取所有Releases ID（按创建时间排序，最新在前）
-          releases=$(gh api repos/$repo_full_name/releases | jq -r '.[] | .id')
-          release_ids=($releases)
-          echo "共找到 ${#release_ids[@]} 个Releases，保留最新3个，删除其余..."
-          
-          # 从第4个开始删除
-          for ((i=3; i<${#release_ids[@]}; i++)); do
-            id=${release_ids[$i]}
-            echo "删除旧Release: $id"
-            gh api -X DELETE repos/$repo_full_name/releases/$id
+          repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+          releases=$(gh api repos/$repo/releases | jq -r '.[] | .id')
+          ids=($releases)
+          for ((i=3; i<${#ids[@]}; i++)); do
+            gh api -X DELETE repos/$repo/releases/${ids[$i]}
           done
