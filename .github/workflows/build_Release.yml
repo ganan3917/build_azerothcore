@@ -122,6 +122,7 @@ jobs:
       - name: 打包产物
         id: package
         run: |
+          cd "$BUILD_DIR"
           tar -czvf \
             acore-${{ steps.ts.outputs.utc }}.tar.gz \
             /etc \
