@@ -81,14 +81,14 @@ jobs:
           mkdir -p "${{ env.BUILD_DIR }}" && cd "${{ env.BUILD_DIR }}"
           cmake ../ \
             -DCMAKE_BUILD_TYPE="${{ env.BUILD_TYPE }}" \
-            -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" \  # 指向BUILD_DIR内的INSTALL_DIR
+            -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" \
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
             -DWITH_WARNINGS=1 \
             -DTOOLS_BUILD=all \
             -DSCRIPTS=static \
             -DMODULES=static
-          make -j$(nproc) && make install  # 安装到BUILD_DIR内的INSTALL_DIR
+          make -j$(nproc) && make install
 
       - name: 验证安装产物（BUILD_DIR内的INSTALL_DIR）
         run: |
