@@ -1,4 +1,4 @@
-name: Build AzerothCore test
+name: Build AzerothCore No modules for linux
 on:
   workflow_dispatch:
   schedule:
