@@ -16,8 +16,8 @@ env:
   VS_VERSION: "Visual Studio 17 2022"
   PLATFORM: "x64"
   CONFIG: "Release"
-  # Chocolatey安装的boost-msvc-14.3实际路径（必须准确）
-  BOOST_ROOT: "C:/ProgramData/chocolatey/lib/boost-msvc-14.3/tools/boost_1_79_0"
+  VCPKG_ROOT: "${{ github.workspace }}/vcpkg"  # vcpkg安装路径
+  BOOST_VERSION: "1.79.0"  # 明确Boost版本
 
 jobs:
   build:
@@ -44,27 +44,25 @@ jobs:
           }
         shell: pwsh
 
-      - name: 安装依赖（MySQL/Boost/OpenSSL）
+      - name: 安装vcpkg（用于可靠管理Boost等依赖）
         run: |
-          Set-ExecutionPolicy Bypass -Scope Process -Force
-          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-          
-          choco install -y mysql --version=8.0.31
-          choco install -y openssl --version=1.1.1q
-          choco install -y boost-msvc-14.3 --version=1.79.0  # 对应VS2022的Boost版本
-          choco install -y git
+          git clone https://github.com/microsoft/vcpkg.git ${{ env.VCPKG_ROOT }}
+          . "${{ env.VCPKG_ROOT }}/bootstrap-vcpkg.bat"
         shell: pwsh
 
-      - name: 验证Boost路径（调试用）
+      - name: 用vcpkg安装依赖（Boost/MySQL/OpenSSL）
         run: |
-          Write-Host "检查Boost路径是否存在: ${{ env.BOOST_ROOT }}"
-          if (Test-Path "${{ env.BOOST_ROOT }}") {
-            Write-Host "Boost路径存在"
-            Get-ChildItem "${{ env.BOOST_ROOT }}"  # 列出路径内容，确认结构正确
-          } else {
-            Write-Host "Boost路径不存在！"
-          }
+          # 安装Boost（指定版本和所需组件）
+          ${{ env.VCPKG_ROOT }}/vcpkg install "boost:${{ env.PLATFORM }}-windows" `
+            "boost-filesystem:${{ env.PLATFORM }}-windows" `
+            "boost-program-options:${{ env.PLATFORM }}-windows" `
+            "boost-iostreams:${{ env.PLATFORM }}-windows" `
+            "boost-regex:${{ env.PLATFORM }}-windows" `
+            --version=${{ env.BOOST_VERSION }}
+          
+          # 安装MySQL和OpenSSL
+          ${{ env.VCPKG_ROOT }}/vcpkg install "mysql:${{ env.PLATFORM }}-windows" `
+            "openssl:${{ env.PLATFORM }}-windows"
         shell: pwsh
 
       - name: 创建构建目录
@@ -73,29 +71,23 @@ jobs:
           New-Item -ItemType Directory -Path ${{ env.INSTALL_DIR }} -Force | Out-Null
         shell: pwsh
 
-      - name: CMake生成解决方案（修复参数格式和Boost查找）
+      - name: CMake生成解决方案（使用vcpkg工具链）
         run: |
           cmake `
             -G "${{ env.VS_VERSION }}" `
             -A ${{ env.PLATFORM }} `
             -S "${{ env.SOURCE_DIR }}" `
             -B "${{ env.BUILD_DIR }}" `
+            -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake" `  # 关键：使用vcpkg工具链
             -DCMAKE_POLICY_DEFAULT_CMP0144=NEW `
             -DCMAKE_POLICY_DEFAULT_CMP0167=OLD `
-            -DBOOST_ROOT="${{ env.BOOST_ROOT }}" `
-            -DBoost_INCLUDE_DIR="${{ env.BOOST_ROOT }}/include" `
-            -DBoost_LIBRARY_DIR="${{ env.BOOST_ROOT }}/lib" `
-            -DBoost_COMPONENTS="filesystem;program_options;iostreams;regex" `
             -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
             -DCMAKE_BUILD_TYPE="${{ env.CONFIG }}" `
             -DBUILD_AZEROTHCORE_TESTS=OFF `
             -DSCRIPTS=static `
-            -DTOOLS=ON `
-            -DMYSQL_ADD_INCLUDE_PATH="C:\Program Files\MySQL\MySQL Server 8.0\include" `
-            -DMYSQL_LIBRARY="C:\Program Files\MySQL\MySQL Server 8.0\lib\libmysql.lib" `
-            -DOPENSSL_ROOT_DIR="C:\Program Files\OpenSSL-Win64"
+            -DTOOLS=ON
         shell: pwsh
-        # 关键修复：确保每行末尾的反引号（`）后无任何字符（包括空格），参数才能正确拼接
+        # 注意：vcpkg会自动处理依赖路径，无需手动指定MySQL/Boost/OpenSSL路径
 
       - name: 使用VS2022构建解决方案
         run: |
