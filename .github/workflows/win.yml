@@ -57,9 +57,6 @@ jobs:
           choco install -y boost-msvc-14.3 --version=1.79.0  # Boost（VS2022对应14.3工具集）
           choco install -y git  # 确保git可用
           
-          # 启动MySQL服务（仅用于编译时依赖检测）
-          net start MySQL
-        shell: pwsh
 
       - name: 创建构建目录
         run: |
