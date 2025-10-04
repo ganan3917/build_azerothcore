@@ -16,9 +16,11 @@ env:
   VS_VERSION: "Visual Studio 17 2022"
   PLATFORM: "x64"
   CONFIG: "Release"
-  BOOST_VERSION: "1.89.0"  # 升级到1.89.0
+  BOOST_VERSION: "1.89.0"
   BOOST_INSTALL_DIR: "C:/local/boost_1_89_0"  # 目标安装路径
-  BOOST_URL: "https://boostorg.jfrog.io/artifactory/main/release/1.89.0/source/boost_1_89_0.zip"  # 1.89.0源码地址
+  # 改为指定的Boost预编译exe下载地址
+  BOOST_EXE_URL: "https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe"
+  BOOST_EXE_NAME: "boost_installer.exe"  # 本地保存的exe文件名
 
 jobs:
   build:
@@ -55,53 +57,68 @@ jobs:
           # 安装MySQL和OpenSSL（版本兼容AzerothCore）
           choco install -y mysql --version=8.0.31
           choco install -y openssl --version=1.1.1q
-          choco install -y 7zip  # 用于解压Boost源码
+          # 无需安装7zip（改用exe直接安装，无需解压源码）
         shell: pwsh
 
-      - name: 手动安装Boost 1.89.0到指定目录并编译
+      - name: 下载并静默安装Boost 1.89.0（使用预编译exe）
         run: |
-          # 创建目标安装目录
+          # 1. 创建目标安装目录（确保目录存在，避免安装器报错）
           New-Item -ItemType Directory -Path "${{ env.BOOST_INSTALL_DIR }}" -Force | Out-Null
           
-          # 下载Boost 1.89.0源码
-          Invoke-WebRequest -Uri "${{ env.BOOST_URL }}" -OutFile "boost.zip"
+          # 2. 下载Boost安装exe
+          Write-Host "正在下载Boost安装包: ${{ env.BOOST_EXE_URL }}"
+          Invoke-WebRequest -Uri "${{ env.BOOST_EXE_URL }}" -OutFile "${{ env.BOOST_EXE_NAME }}" -UseBasicParsing
           
-          # 解压到临时目录（解压后文件夹名为boost_1_89_0）
-          7z x boost.zip -o"${{ github.workspace }}\boost_temp" -y
+          # 3. 验证exe是否下载成功
+          if (-not (Test-Path "${{ env.BOOST_EXE_NAME }}")) {
+            Write-Error "Boost安装包下载失败！"
+            exit 1
+          }
           
-          # 进入Boost源码目录
-          $boostSrcDir = "${{ github.workspace }}\boost_temp\boost_1_89_0"
-          Set-Location $boostSrcDir
+          # 4. 静默安装（Boost exe安装器支持的参数：/S=静默，--prefix=指定安装路径）
+          Write-Host "正在静默安装Boost到: ${{ env.BOOST_INSTALL_DIR }}"
+          .\${{ env.BOOST_EXE_NAME }} /S --prefix="${{ env.BOOST_INSTALL_DIR }}"
           
-          # 生成VS2022兼容的编译工具（msvc）
-          .\bootstrap.bat msvc
-          
-          # 编译并安装到目标目录（指定VS2022工具集和x64架构）
-          .\b2.exe `
-            toolset=msvc-14.3 `  # VS2022对应工具集版本
-            architecture=x86 `
-            address-model=64 `  # 64位架构
-            --prefix="${{ env.BOOST_INSTALL_DIR }}" `  # 安装路径
-            --with-filesystem `
-            --with-program_options `
-            --with-iostreams `
-            --with-regex `  # AzerothCore必需组件
-            install
+          # 5. 验证安装结果（检查关键目录和文件）
+          $boostIncludeDir = "${{ env.BOOST_INSTALL_DIR }}\include"
+          $boostLibDir = "${{ env.BOOST_INSTALL_DIR }}\lib"
+          if (-not (Test-Path $boostIncludeDir) -or -not (Test-Path $boostLibDir)) {
+            Write-Error "Boost安装失败！缺少include或lib目录"
+            exit 1
+          } else {
+            Write-Host "Boost安装成功！"
+            Write-Host "Include目录: $boostIncludeDir"
+            Write-Host "Lib目录: $boostLibDir"
+          }
         shell: pwsh
 
       - name: 设置BOOST_ROOT系统环境变量
         run: |
-          # 设置当前会话环境变量
+          # 1. 设置当前会话环境变量（确保后续步骤生效）
           $env:BOOST_ROOT = "${{ env.BOOST_INSTALL_DIR }}"
-          # 设置系统级环境变量（持久化）
+          
+          # 2. 设置系统级环境变量（持久化，/M表示系统级）
           setx BOOST_ROOT "${{ env.BOOST_INSTALL_DIR }}" /M
-          # 验证环境变量和路径
-          Write-Host "当前BOOST_ROOT: $env:BOOST_ROOT"
-          if (Test-Path "$env:BOOST_ROOT") {
-            Write-Host "Boost安装目录验证成功: $env:BOOST_ROOT"
-            Write-Host "目录内容: $(Get-ChildItem "$env:BOOST_ROOT" | Select-Object -ExpandProperty Name)"
+          
+          # 3. 验证环境变量
+          Write-Host "=== BOOST_ROOT 环境变量验证 ==="
+          Write-Host "当前会话BOOST_ROOT: $env:BOOST_ROOT"
+          Write-Host "系统BOOST_ROOT: $(Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' -Name BOOST_ROOT | Select-Object -ExpandProperty BOOST_ROOT)"
+          
+          # 4. 验证安装路径文件（确保版本正确）
+          $versionFile = "${{ env.BOOST_INSTALL_DIR }}\include\boost\version.hpp"
+          if (Test-Path $versionFile) {
+            Write-Host "找到Boost版本文件: $versionFile"
+            # 读取版本号（验证是否为1.89.0）
+            $versionContent = Get-Content $versionFile -Raw
+            if ($versionContent -match 'BOOST_LIB_VERSION "1_89_0"') {
+              Write-Host "Boost版本验证成功: 1.89.0"
+            } else {
+              Write-Warning "Boost版本文件存在，但未匹配到1.89.0（可能版本错误）"
+            }
           } else {
-            Write-Error "Boost安装目录不存在: $env:BOOST_ROOT"
+            Write-Error "未找到Boost版本文件: $versionFile"
+            exit 1
           }
         shell: pwsh
 
@@ -111,7 +128,7 @@ jobs:
           New-Item -ItemType Directory -Path ${{ env.INSTALL_DIR }} -Force | Out-Null
         shell: pwsh
 
-      - name: CMake生成解决方案（适配Boost 1.89.0）
+      - name: CMake生成解决方案（适配Boost 1.89.0预编译包）
         run: |
           cmake `
             -G "${{ env.VS_VERSION }}" `
@@ -119,10 +136,10 @@ jobs:
             -S "${{ env.SOURCE_DIR }}" `
             -B "${{ env.BUILD_DIR }}" `
             -DCMAKE_POLICY_DEFAULT_CMP0144=NEW `  # 启用BOOST_ROOT识别
-            -DCMAKE_POLICY_DEFAULT_CMP0167=OLD `  # 兼容FindBoost模块
-            -DBOOST_ROOT="${{ env.BOOST_INSTALL_DIR }}" `  # 显式指定Boost路径
-            -DBoost_INCLUDE_DIR="${{ env.BOOST_INSTALL_DIR }}/include" `  # 头文件路径
-            -DBoost_LIBRARY_DIR="${{ env.BOOST_INSTALL_DIR }}/lib" `  # 库文件路径
+            -DCMAKE_POLICY_DEFAULT_CMP0167=OLD `  # 兼容FindBoost模块（避免新版本CMake报错）
+            -DBOOST_ROOT="${{ env.BOOST_INSTALL_DIR }}" `  # 显式指定Boost根路径
+            -DBoost_INCLUDE_DIR="${{ env.BOOST_INSTALL_DIR }}\include" `  # 头文件路径（预编译包默认结构）
+            -DBoost_LIBRARY_DIR="${{ env.BOOST_INSTALL_DIR }}\lib" `  # 库文件路径（预编译包默认结构）
             -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
             -DCMAKE_BUILD_TYPE="${{ env.CONFIG }}" `
             -DBUILD_AZEROTHCORE_TESTS=OFF `
@@ -132,22 +149,33 @@ jobs:
             -DMYSQL_LIBRARY="C:\Program Files\MySQL\MySQL Server 8.0\lib\libmysql.lib" `
             -DOPENSSL_ROOT_DIR="C:\Program Files\OpenSSL-Win64"
         shell: pwsh
+        # 关键说明：msvc-14.1的Boost预编译包可兼容VS2022（msvc-14.3），无需额外工具集配置
 
       - name: 使用VS2022构建解决方案
         run: |
           $solutionPath = Join-Path ${{ env.BUILD_DIR }} ${{ env.SOLUTION_NAME }}
-          Write-Host "构建解决方案: $solutionPath"
+          if (-not (Test-Path $solutionPath)) {
+            Write-Error "CMake未生成解决方案文件: $solutionPath"
+            exit 1
+          }
+          Write-Host "正在使用VS2022构建解决方案: $solutionPath"
+          # 使用devenv.com构建，指定Release+x64配置，目标为INSTALL（输出到INSTALL_DIR）
           devenv.com $solutionPath /Build "${{ env.CONFIG }}|${{ env.PLATFORM }}" /Project INSTALL
         shell: pwsh
 
       - name: 打包构建产物
         run: |
-          Compress-Archive -Path ${{ env.INSTALL_DIR }}\* -DestinationPath "azerothcore_${{ env.CONFIG }}.zip" -Force
+          if (-not (Test-Path ${{ env.INSTALL_DIR }})) {
+            Write-Error "构建产物目录不存在: ${{ env.INSTALL_DIR }}"
+            exit 1
+          }
+          Write-Host "正在打包构建产物: ${{ env.INSTALL_DIR }}"
+          Compress-Archive -Path ${{ env.INSTALL_DIR }}\* -DestinationPath "azerothcore_${{ env.CONFIG }}_v${{ env.BOOST_VERSION }}.zip" -Force
         shell: pwsh
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: azerothcore-windows-exe
-          path: "azerothcore_${{ env.CONFIG }}.zip"
-          retention-days: 14
+          name: azerothcore-windows-exe_boost-${{ env.BOOST_VERSION }}
+          path: "azerothcore_${{ env.CONFIG }}_v${{ env.BOOST_VERSION }}.zip"
+          retention-days: 14  # 产物保留14天
