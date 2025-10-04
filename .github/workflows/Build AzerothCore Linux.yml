@@ -90,14 +90,14 @@ jobs:
             -DMODULES=static
           make -j$(nproc) && make install
           
-      - name: 打包BUILD_DIR中的INSTALL_DIR文件夹
+ - name: 打包指定路径文件
         id: package
         run: |
-          cd "${{ env.BUILD_DIR }}"
-          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./install
+          TARGET_PATH="/home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/"
+          # 打包该路径下的所有文件（保留目录结构）
+          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" -C "$TARGET_PATH" *
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
-          cp "acore-${{ steps.ts.outputs.utc }}.tar.gz" ../../
-
+          
       - name: 保存产物到Artifact
         uses: actions/upload-artifact@v4
         with:
