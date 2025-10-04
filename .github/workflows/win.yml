@@ -60,11 +60,7 @@ jobs:
           
           # 启动MySQL服务
           net start MySQL
-          
-          # 配置MySQL密码
-          mysql -u root -p${{ env.MYSQL_ROOT_PASSWORD }} -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${{ env.MYSQL_ROOT_PASSWORD }}'; FLUSH PRIVILEGES;"
-        shell: pwsh
-        
+
       - name: Create build directory
         run: |
           New-Item -ItemType Directory -Path ${{ env.BUILD_DIR }} -Force | Out-Null
