@@ -13,7 +13,9 @@ env:
   INSTALL_DIR: "${{ github.workspace }}/install"
   # Boost源码配置
   BOOST_URL: "https://archives.boost.io/release/1.89.0/source/boost_1_89_0.tar.gz"
-  BOOST_SOURCE_DIR: "${{ github.workspace }}/boost-src"  # 源码解压目录
+  BOOST_ARCHIVE_NAME: "boost_1_89_0.tar.gz"  # 显式指定归档文件名
+  BOOST_FOLDER_NAME: "boost_1_89_0"          # 解压后的文件夹名
+  BOOST_SOURCE_DIR: "${{ github.workspace }}/boost-src"  # 源码目录
   BOOST_INSTALL_DIR: "${{ github.workspace }}/boost"     # 安装目录
 
 jobs:
@@ -32,18 +34,14 @@ jobs:
       
       - name: 配置环境变量（VS2022和工具链）
         run: |
-          # 获取VS2022安装路径
           $vsPath = vswhere -latest -property installationPath
           echo "VS安装路径: $vsPath"
           
-          # 加载VS环境变量（确保cl.exe、link.exe等编译器可用）
           & "$vsPath\VC\Auxiliary\Build\vcvars64.bat"
           
-          # 将VS工具链添加到PATH
           echo "$vsPath\MSBuild\Current\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           echo "$vsPath\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           
-          # 配置MySQL路径
           $mysqlPath = "C:\Program Files\MySQL\MySQL Server 8.0\bin"
           if (Test-Path $mysqlPath) {
             echo "$mysqlPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
@@ -61,18 +59,35 @@ jobs:
       - name: 下载并解压Boost源码
         run: |
           if (-not (Test-Path "${{ env.BOOST_SOURCE_DIR }}")) {
-            # 下载源码包
-            Invoke-WebRequest -Uri "${{ env.BOOST_URL }}" -OutFile "boost.tar.gz"
+            # 下载源码包（指定明确的文件名）
+            Invoke-WebRequest -Uri "${{ env.BOOST_URL }}" -OutFile "${{ env.BOOST_ARCHIVE_NAME }}"
             
             # 创建源码目录
             New-Item -ItemType Directory -Path "${{ env.BOOST_SOURCE_DIR }}" -Force | Out-Null
             
-            # 解压（Windows需要7zip支持，GitHub Actions镜像已预装）
-            7z x boost.tar.gz -o"${{ env.BOOST_SOURCE_DIR }}"
-            7z x "${{ env.BOOST_SOURCE_DIR }}\boost_1_89_0.tar" -o"${{ env.BOOST_SOURCE_DIR }}"
+            # 第一步：解压gz压缩包（得到tar文件）
+            7z x "${{ env.BOOST_ARCHIVE_NAME }}" -o"${{ env.BOOST_SOURCE_DIR }}"
             
-            # 移动到源码目录（去除版本号前缀）
-            Move-Item -Path "${{ env.BOOST_SOURCE_DIR }}\boost_1_89_0\*" -Destination "${{ env.BOOST_SOURCE_DIR }}"
+            # 第二步：解压tar文件（得到源码文件夹）
+            $tarFile = Join-Path -Path "${{ env.BOOST_SOURCE_DIR }}" -ChildPath "${{ env.BOOST_FOLDER_NAME }}.tar"
+            7z x "$tarFile" -o"${{ env.BOOST_SOURCE_DIR }}"
+            
+            # 验证tar文件是否存在
+            if (-not (Test-Path "$tarFile")) {
+              echo "错误：解压后未找到tar文件 $tarFile"
+              exit 1
+            }
+            
+            # 验证源码文件夹是否存在
+            $sourceFolder = Join-Path -Path "${{ env.BOOST_SOURCE_DIR }}" -ChildPath "${{ env.BOOST_FOLDER_NAME }}"
+            if (-not (Test-Path "$sourceFolder")) {
+              echo "错误：解压后未找到源码文件夹 $sourceFolder"
+              exit 1
+            }
+            
+            # 移动源码到目标目录（合并文件夹内容）
+            Get-ChildItem -Path "$sourceFolder" -Recurse | Move-Item -Destination "${{ env.BOOST_SOURCE_DIR }}"
+            Remove-Item -Path "$sourceFolder" -Recurse -Force  # 清理空文件夹
           } else {
             echo "使用缓存的Boost源码"
           }
@@ -80,15 +95,11 @@ jobs:
       
       - name: 编译并安装Boost
         run: |
-          # 进入Boost源码目录
           cd "${{ env.BOOST_SOURCE_DIR }}"
           
-          # 仅在未安装时执行编译
           if (-not (Test-Path "${{ env.BOOST_INSTALL_DIR }}\include\boost")) {
-            # 初始化Boost构建系统（生成b2.exe）
             .\bootstrap.bat msvc
             
-            # 使用b2编译并安装（针对x64架构，Release模式）
             .\b2.exe `
               --build-dir="${{ env.BOOST_SOURCE_DIR }}\build" `
               --prefix="${{ env.BOOST_INSTALL_DIR }}" `
@@ -110,7 +121,6 @@ jobs:
             echo "使用缓存的Boost编译结果"
           }
           
-          # 转换路径为/分隔，设置BOOST_ROOT环境变量
           $boostRoot = "${{ env.BOOST_INSTALL_DIR }}".Replace('\', '/')
           echo "BOOST_ROOT=$boostRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         shell: pwsh
