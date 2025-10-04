@@ -91,7 +91,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.BUILD_AZEROTHCORE }}
         with:
           tag_name: "build-${{ steps.ts.outputs.date }}-${{ steps.ts.outputs.utc }}"
-          release_name: "Build AzerothCore No modules for linux ${{ steps.ts.outputs.sh }}"
+          release_name: "Auto Build Azerothcore-Wotlk ${{ steps.ts.outputs.sh }}"
           body: |
             ### Auto Build Azerothcore-Wotlk
             - 构建时间：UTC ${{ steps.ts.outputs.utc }}
