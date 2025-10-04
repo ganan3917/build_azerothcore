@@ -94,7 +94,7 @@ jobs:
         id: package
         run: |
           # 修正打包路径（使用环境变量定义的安装目录）
-          cd "${{ env.INSTALL_DIR }}"
+          cd "${{ env.BUILD_DIR }}"
           tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./*
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
           # 复制到工作目录方便上传
