@@ -1,10 +1,9 @@
-name: 编译AzerothCore（Windows-修复语法错误）
+name: 编译AzerothCore（Windows-带Boost配置）
 
 env:
-  REPO: "azerothcore/azerothcore-wotlk"  # 修正：使用 {owner}/{repo} 格式
+  REPO: "azerothcore/azerothcore-wotlk"
   BRANCH: "main"
   INSTALL_DIR: "./install"
-  OPENSSL_DIR: "C:/Program Files/OpenSSL-Win64"
 
 on:
   workflow_dispatch:
@@ -23,49 +22,35 @@ jobs:
       - name: 拉取源码及核心子模块
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.REPO }}  # 使用修正后的 {owner}/{repo} 格式
+          repository: ${{ env.REPO }}
           ref: ${{ env.BRANCH }}
           submodules: recursive
           fetch-depth: 0
           clean: true
 
-      - name: 安装编译依赖（修正MySQL连接器类型）
+      - name: 安装必要依赖（含最新版Boost）
         run: |
-          if (Get-Service -Name "MySQL" -ErrorAction SilentlyContinue) {
-            Stop-Service -Name "MySQL" -Force
-            sc delete MySQL | Out-Null
-          }
-          
+          # 安装cmake、zlib和最新版Boost
           choco install -y `
             cmake `
-            mysql-connector-c --version 8.0.36 `
-            openssl --version 1.1.1w `
             zlib `
+            boost `  # 安装最新版Boost C++
             --no-progress
           
-          # 动态查找MySQL C连接器头文件路径
-          $mysqlInclude = Get-ChildItem -Path "C:\ProgramData\chocolatey\lib\mysql-connector-c" `
-            -Recurse -Filter "include" `
-            | Where-Object { $_.FullName -match "include$" } `
+          # 动态查找Boost安装根目录（Chocolatey通常安装在lib/boost下）
+          $boostRoot = Get-ChildItem -Path "C:\ProgramData\chocolatey\lib\boost" `
+            -Recurse -Filter "boost" `  # 查找包含boost核心目录的路径
+            | Where-Object { $_.FullName -match "boost\\tools\\boost$" -or $_.FullName -match "boost$" } `
             | Select-Object -First 1 -ExpandProperty FullName
-          if (-not $mysqlInclude) {
-            Write-Error "未找到MySQL C连接器头文件目录"
+          
+          if (-not $boostRoot) {
+            Write-Error "未找到Boost安装目录，请检查Chocolatey安装是否成功"
             exit 1
           }
-          echo "MYSQL_INCLUDE=$mysqlInclude" >> $env:GITHUB_ENV
           
-          # 动态查找MySQL C连接器库文件
-          $mysqlLib = Get-ChildItem -Path "C:\ProgramData\chocolatey\lib\mysql-connector-c" `
-            -Recurse -Filter "libmysql.lib" `
-            | Select-Object -First 1 -ExpandProperty FullName
-          if (-not $mysqlLib) {
-            Write-Error "未找到libmysql.lib"
-            exit 1
-          }
-          echo "MYSQL_LIB=$mysqlLib" >> $env:GITHUB_ENV
-          
-          Write-Host "找到MySQL头文件路径: $mysqlInclude"
-          Write-Host "找到MySQL库文件路径: $mysqlLib"
+          # 设置BOOST_ROOT环境变量（供后续CMake使用）
+          echo "BOOST_ROOT=$boostRoot" >> $env:GITHUB_ENV
+          Write-Host "已设置BOOST_ROOT: $boostRoot"
 
       - name: 初始化VS2022 x64编译环境
         uses: ilammy/msvc-dev-cmd@v1
@@ -73,7 +58,7 @@ jobs:
           arch: x64
           toolset: 143
 
-      - name: 生成VS2022解决方案
+      - name: 生成VS2022解决方案（指定Boost路径）
         run: |
           mkdir -Force build | Out-Null
           cd build
@@ -83,14 +68,9 @@ jobs:
             -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
             -DCMAKE_BUILD_TYPE=Release `
             -DAC_USE_STD_MALLOC=ON `
-            -DENABLE_MYSQL_SSL=ON `
             -DTOOLS_BUILD=ON `
             -DSCRIPTS=static `
-            -DMYSQL_INCLUDE_DIR="${{ env.MYSQL_INCLUDE }}" `
-            -DMYSQL_LIBRARY="${{ env.MYSQL_LIB }}" `
-            -DOPENSSL_ROOT_DIR="${{ env.OPENSSL_DIR }}" `
-            -DOPENSSL_INCLUDE_DIR="${{ env.OPENSSL_DIR }}/include" `
-            -DOPENSSL_LIBRARIES="${{ env.OPENSSL_DIR }}/lib/libssl.lib;${{ env.OPENSSL_DIR }}/lib/libcrypto.lib"
+            -DBOOST_ROOT="${{ env.BOOST_ROOT }}"  # 显式指定Boost路径
           if (-not (Test-Path "AzerothCore.sln")) {
             Write-Error "CMake生成解决方案失败，未找到AzerothCore.sln"
             exit 1
