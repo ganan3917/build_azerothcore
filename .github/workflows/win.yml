@@ -1,4 +1,4 @@
-name: Build AzerothCore with VS2022 (Only Presence Check)
+name: Build AzerothCore with VS2022 (Only Presence Check - Fixed)
 
 on:
   workflow_dispatch:
@@ -37,9 +37,9 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - name: 环境变量检查与设置工具函数
+      - name: 环境变量检查与设置工具函数（修复语法错误）
         run: |
-          # 环境变量检查与设置函数（仅检查路径是否存在，不验证版本）
+          # 环境变量检查与设置函数（修复：动态环境变量赋值语法 ${env:$Name}）
           function Ensure-EnvVariable {
             param(
               [string]$Name,
@@ -54,8 +54,10 @@ jobs:
               } else {
                 $newValue = $Value
               }
+              # 1. 修复：系统级环境变量设置（原逻辑不变）
               [Environment]::SetEnvironmentVariable($Name, $newValue, "Machine")
-              $env:$Name = $newValue
+              # 2. 修复：当前会话环境变量设置（关键语法修正：$env:$Name → ${env:$Name}）
+              ${env:$Name} = $newValue
             }
           }
 
@@ -95,7 +97,7 @@ jobs:
               exit 1
             }
             
-            # 配置环境变量
+            # 配置环境变量（调用修复后的函数）
             Ensure-EnvVariable -Name "Path" -Value "$env:GIT_INSTALL_DIR\bin;$env:GIT_INSTALL_DIR\cmd" -IsPath $true
             
             # 最终验证命令可用性
@@ -139,7 +141,7 @@ jobs:
               exit 1
             }
             
-            # 配置环境变量
+            # 配置环境变量（调用修复后的函数）
             Ensure-EnvVariable -Name "Path" -Value "$env:CMAKE_INSTALL_DIR\bin" -IsPath $true
             
             # 最终验证命令可用性
@@ -190,7 +192,7 @@ jobs:
               exit 1
             }
             
-            # 配置环境变量
+            # 配置环境变量（调用修复后的函数）
             Ensure-EnvVariable -Name "Path" -Value "$env:MYSQL_INSTALL_DIR\bin" -IsPath $true
             
             # 最终验证命令可用性
@@ -241,7 +243,7 @@ jobs:
               exit 1
             }
             
-            # 配置环境变量
+            # 配置环境变量（调用修复后的函数）
             Ensure-EnvVariable -Name "Path" -Value "$env:OPENSSL_INSTALL_DIR\bin" -IsPath $true
             Ensure-EnvVariable -Name "OPENSSL_ROOT_DIR" -Value $env:OPENSSL_INSTALL_DIR
             
@@ -292,7 +294,7 @@ jobs:
               exit 1
             }
             
-            # 配置环境变量
+            # 配置环境变量（调用修复后的函数）
             Ensure-EnvVariable -Name "BOOST_ROOT" -Value $env:BOOST_INSTALL_DIR
             Ensure-EnvVariable -Name "Path" -Value "$env:BOOST_INSTALL_DIR\lib" -IsPath $true
             
