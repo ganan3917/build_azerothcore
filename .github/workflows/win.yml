@@ -1,103 +1,109 @@
-name: Build AzerothCore (Windows)
+name: Build AzerothCore with VS2022
 
-# 触发条件：手动触发和每天北京时间3点自动运行
+# 触发条件：手动触发 + 每天北京时间3点自动运行
 on:
-  workflow_dispatch:  # 手动触发
+  workflow_dispatch:
   schedule:
-    - cron: '0 19 * * *'  # UTC时间19点 = 北京时间3点
+    - cron: '0 19 * * *'  # UTC+8=北京时间，19+8=3点
 
 env:
-  # 配置参数 - 可根据需要修改
-  AZEROTHCORE_REPO: "azerothcore/azerothcore-wotlk"  # 主仓库地址
-  AZEROTHCORE_BRANCH: "master"                       # 主仓库分支
-  MODULES: "azerothcore/mod-ah-bot azerothcore/mod-eluna azerothcore/mod-transmog"  # 模块列表，空格分隔
-  BUILD_DIR: "${{ github.workspace }}/build"
-  INSTALL_DIR: "${{ github.workspace }}/azerothcore-install"
-  CMAKE_GENERATOR: "Visual Studio 17 2022"
-  CMAKE_PLATFORM: "x64"
-  MYSQL_ROOT_PASSWORD: "root"
+  # 核心配置参数
+  AZEROTHCORE_REPO: "azerothcore/azerothcore-wotlk"  # 主仓库
+  AZEROTHCORE_BRANCH: "master"                       # 分支
+  MODULES: "azerothcore/mod-ah-bot azerothcore/mod-eluna"  # 模块（空格分隔）
+  SOURCE_DIR: "${{ github.workspace }}/azerothcore"   # 源码目录
+  BUILD_DIR: "${{ github.workspace }}/build"          # 构建目录（存放解决方案）
+  INSTALL_DIR: "${{ github.workspace }}/install"      # 安装目录（输出exe）
+  SOLUTION_NAME: "AzerothCore.sln"                    # 生成的解决方案名称
+  VS_VERSION: "Visual Studio 17 2022"                 # VS版本
+  PLATFORM: "x64"                                     # 平台
+  CONFIG: "Release"                                   # 配置
 
 jobs:
   build:
-    name: Build AzerothCore with VS2022
-    runs-on: windows-latest  # 使用GitHub提供的Windows镜像，包含VS2022
-    
+    runs-on: windows-latest  # 自带VS2022的Windows镜像
     steps:
-      - name: Checkout AzerothCore source
+      - name: 拉取AzerothCore源码
         uses: actions/checkout@v4
         with:
           repository: ${{ env.AZEROTHCORE_REPO }}
           ref: ${{ env.AZEROTHCORE_BRANCH }}
-          path: 'azerothcore'
-          submodules: 'recursive'
+          path: ${{ env.SOURCE_DIR }}
+          submodules: recursive
           fetch-depth: 0
-          
-      - name: Checkout modules
+
+      - name: 拉取模块
         run: |
-          $modulesDir = "${{ github.workspace }}\azerothcore\modules"
-          if (-not (Test-Path $modulesDir)) {
-            New-Item -ItemType Directory -Path $modulesDir -Force | Out-Null
-          }
+          $modulesPath = "${{ env.SOURCE_DIR }}\modules"
+          if (-not (Test-Path $modulesPath)) { New-Item -ItemType Directory -Path $modulesPath -Force | Out-Null }
           
           foreach ($module in $env:MODULES -split ' ') {
             $moduleName = $module.Split('/')[-1]
-            $modulePath = Join-Path $modulesDir $moduleName
-            Write-Host "Cloning module: $module to $modulePath"
-            git clone https://github.com/$module.git $modulePath
+            $targetPath = Join-Path $modulesPath $moduleName
+            git clone "https://github.com/$module.git" $targetPath
           }
         shell: pwsh
-        
-      - name: Set up dependencies
+
+      - name: 安装依赖（MySQL/Boost/OpenSSL）
         run: |
           # 安装Chocolatey包管理器
-          Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
           
-          # 安装AzerothCore所需依赖
-          choco install -y mysql --version=8.0.31
-          choco install -y openssl --version=1.1.1q
-          choco install -y boost-msvc-14.3 --version=1.79.0
-          choco install -y git
+          # 安装AzerothCore所需依赖（版本经过兼容性验证）
+          choco install -y mysql --version=8.0.31  # MySQL开发库
+          choco install -y openssl --version=1.1.1q  # OpenSSL
+          choco install -y boost-msvc-14.3 --version=1.79.0  # Boost（VS2022对应14.3工具集）
+          choco install -y git  # 确保git可用
           
-          # 启动MySQL服务
+          # 启动MySQL服务（仅用于编译时依赖检测）
           net start MySQL
+        shell: pwsh
 
-      - name: Create build directory
+      - name: 创建构建目录
         run: |
           New-Item -ItemType Directory -Path ${{ env.BUILD_DIR }} -Force | Out-Null
           New-Item -ItemType Directory -Path ${{ env.INSTALL_DIR }} -Force | Out-Null
         shell: pwsh
-        
-      - name: Configure CMake
+
+      - name: CMake生成VS2022解决方案
         run: |
           cmake `
-            -G "${{ env.CMAKE_GENERATOR }}" `
-            -A ${{ env.CMAKE_PLATFORM }} `
-            -S "${{ github.workspace }}/azerothcore" `
-            -B ${{ env.BUILD_DIR }} `
-            -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DBUILD_AZEROTHCORE_TESTS=OFF `
-            -DSCRIPTS=static `
-            -DTOOLS=ON `
-            -DMYSQL_ADD_INCLUDE_PATH="C:\Program Files\MySQL\MySQL Server 8.0\include" `
-            -DMYSQL_LIBRARY="C:\Program Files\MySQL\MySQL Server 8.0\lib\libmysql.lib" `
-            -DOPENSSL_ROOT_DIR="C:\Program Files\OpenSSL-Win64" `
-            -DBOOST_ROOT="C:\local\boost_1_79_0"
+            -G "${{ env.VS_VERSION }}" `  # 指定生成VS2022解决方案
+            -A ${{ env.PLATFORM }} `      # 平台（x64）
+            -S ${{ env.SOURCE_DIR }} `    # 源码目录
+            -B ${{ env.BUILD_DIR }} `     # 输出解决方案的目录
+            -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} `  # 安装路径（exe最终输出到这）
+            -DCMAKE_BUILD_TYPE=${{ env.CONFIG }} `           # 构建类型（Release）
+            -DBUILD_AZEROTHCORE_TESTS=OFF `                  # 关闭测试
+            -DSCRIPTS=static `                               # 静态编译脚本
+            -DTOOLS=ON `                                      # 生成工具
+            -DMYSQL_ADD_INCLUDE_PATH="C:\Program Files\MySQL\MySQL Server 8.0\include" `  # MySQL头文件
+            -DMYSQL_LIBRARY="C:\Program Files\MySQL\MySQL Server 8.0\lib\libmysql.lib" `  # MySQL库文件
+            -DOPENSSL_ROOT_DIR="C:\Program Files\OpenSSL-Win64" `  # OpenSSL路径
+            -DBOOST_ROOT="C:\local\boost_1_79_0"               # Boost路径
         shell: pwsh
-        
-      - name: Build with MSBuild
+
+      - name: 使用VS2022打开解决方案并生成exe
         run: |
-          cmake --build ${{ env.BUILD_DIR }} --config Release --target install -- /maxcpucount
+          # 拼接解决方案完整路径
+          $solutionPath = Join-Path ${{ env.BUILD_DIR }} ${{ env.SOLUTION_NAME }}
+          Write-Host "使用VS2022构建解决方案: $solutionPath"
+          
+          # 调用VS2022命令行工具（devenv.com）构建
+          # /Build: 构建指定配置 /Project: 指定目标（INSTALL确保输出到INSTALL_DIR）
+          devenv.com $solutionPath /Build "${{ env.CONFIG }}|${{ env.PLATFORM }}" /Project INSTALL
         shell: pwsh
-        
-      - name: Package build artifacts
+
+      - name: 打包生成的exe及相关文件
         run: |
-          Compress-Archive -Path ${{ env.INSTALL_DIR }}\* -DestinationPath azerothcore-build.zip -Force
+          Compress-Archive -Path ${{ env.INSTALL_DIR }}\* -DestinationPath "azerothcore_${{ env.CONFIG }}.zip" -Force
         shell: pwsh
-        
-      - name: Upload build artifacts
+
+      - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: azerothcore-windows-build
-          path: azerothcore-build.zip
+          name: azerothcore-windows-exe
+          path: "azerothcore_${{ env.CONFIG }}.zip"
           retention-days: 14  # 保留14天
