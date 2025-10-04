@@ -12,8 +12,6 @@ env:
 
 # 触发条件不变
 on:
-  push:
-    branches: [ ${{ env.BRANCH }} ]
   workflow_dispatch:
   schedule:
     - cron: "0 19 * * *"  # 北京时间凌晨3点（UTC+19:00）
