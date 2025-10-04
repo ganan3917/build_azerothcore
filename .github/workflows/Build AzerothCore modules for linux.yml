@@ -97,7 +97,7 @@ jobs:
           tag_name: build-${{ steps.ts.outputs.utc }}
           release_name: Build AzerothCore modules for linux ${{ steps.ts.outputs.sh }}（UTC ${{ steps.ts.outputs.utc }}）
           body: |
-            ### 自动构建信息 AzerothCore modules
+            ### auto build AzerothCore modules
             - 构建时间：UTC ${{ steps.ts.outputs.utc }}
             - 核心分支：${{ env.ACORE_BRANCH }}
             - 成功模块：${{ steps.modules.outputs.success }}
