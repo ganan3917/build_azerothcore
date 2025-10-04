@@ -14,9 +14,6 @@ env:
 
 # 触发条件：手动触发 + 推送到指定分支 + 北京时间凌晨3点自动运行
 on:
-  # 自动触发：推送到env中指定的分支
-  push:
-    branches: [ ${{ env.BRANCH }} ]
   # 手动触发：在GitHub页面点击"Run workflow"
   workflow_dispatch:
   # 定时触发：北京时间每天凌晨3点（UTC时间19:00，因为UTC+8=北京时间）
