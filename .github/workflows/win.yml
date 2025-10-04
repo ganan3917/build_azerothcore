@@ -3,7 +3,7 @@ name: Build AzerothCore with VS2022 (With Boost 1.89.0 Install)
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 19 * * *'  # 北京时间每天3点（UTC时间19点）
+    - cron: '0 19 * * *'
 
 env:
   # 核心配置
@@ -25,7 +25,7 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest  # 自定义Runner请替换为 runs-on: [self-hosted, windows]
+    runs-on: windows-latest
     steps:
       # 步骤1：安装Boost 1.89.0并配置环境变量
       - name: 安装Boost 1.89.0 (msvc-14.3)
