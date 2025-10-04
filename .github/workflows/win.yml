@@ -18,7 +18,7 @@ jobs:
 
       - name: 静默安装 Boost 到工作目录
         run: |
-          .\boost_installer.exe /S /INSTALLDIR="${{ github.workspace }}\boost" /NOICONS
+          .\boost_installer.exe /S /INSTALLDIR="D:\boost" /NOICONS
         shell: powershell
 
       - name: 验证 Boost 安装目录
