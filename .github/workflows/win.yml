@@ -16,8 +16,9 @@ env:
   VS_VERSION: "Visual Studio 17 2022"
   PLATFORM: "x64"
   CONFIG: "Release"
-  VCPKG_ROOT: "${{ github.workspace }}/vcpkg"  # vcpkg安装路径
-  BOOST_VERSION: "1.79.0"  # 明确Boost版本
+  BOOST_VERSION: "1.89.0"  # 升级到1.89.0
+  BOOST_INSTALL_DIR: "C:/local/boost_1_89_0"  # 目标安装路径
+  BOOST_URL: "https://boostorg.jfrog.io/artifactory/main/release/1.89.0/source/boost_1_89_0.zip"  # 1.89.0源码地址
 
 jobs:
   build:
@@ -44,25 +45,64 @@ jobs:
           }
         shell: pwsh
 
-      - name: 安装vcpkg（用于可靠管理Boost等依赖）
+      - name: 安装基础依赖（MySQL/OpenSSL）
         run: |
-          git clone https://github.com/microsoft/vcpkg.git ${{ env.VCPKG_ROOT }}
-          . "${{ env.VCPKG_ROOT }}/bootstrap-vcpkg.bat"
+          # 安装Chocolatey包管理器
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+          
+          # 安装MySQL和OpenSSL（版本兼容AzerothCore）
+          choco install -y mysql --version=8.0.31
+          choco install -y openssl --version=1.1.1q
+          choco install -y 7zip  # 用于解压Boost源码
         shell: pwsh
 
-      - name: 用vcpkg安装依赖（Boost/MySQL/OpenSSL）
+      - name: 手动安装Boost 1.89.0到指定目录并编译
         run: |
-          # 安装Boost（指定版本和所需组件）
-          ${{ env.VCPKG_ROOT }}/vcpkg install "boost:${{ env.PLATFORM }}-windows" `
-            "boost-filesystem:${{ env.PLATFORM }}-windows" `
-            "boost-program-options:${{ env.PLATFORM }}-windows" `
-            "boost-iostreams:${{ env.PLATFORM }}-windows" `
-            "boost-regex:${{ env.PLATFORM }}-windows" `
-            --version=${{ env.BOOST_VERSION }}
+          # 创建目标安装目录
+          New-Item -ItemType Directory -Path "${{ env.BOOST_INSTALL_DIR }}" -Force | Out-Null
           
-          # 安装MySQL和OpenSSL
-          ${{ env.VCPKG_ROOT }}/vcpkg install "mysql:${{ env.PLATFORM }}-windows" `
-            "openssl:${{ env.PLATFORM }}-windows"
+          # 下载Boost 1.89.0源码
+          Invoke-WebRequest -Uri "${{ env.BOOST_URL }}" -OutFile "boost.zip"
+          
+          # 解压到临时目录（解压后文件夹名为boost_1_89_0）
+          7z x boost.zip -o"${{ github.workspace }}\boost_temp" -y
+          
+          # 进入Boost源码目录
+          $boostSrcDir = "${{ github.workspace }}\boost_temp\boost_1_89_0"
+          Set-Location $boostSrcDir
+          
+          # 生成VS2022兼容的编译工具（msvc）
+          .\bootstrap.bat msvc
+          
+          # 编译并安装到目标目录（指定VS2022工具集和x64架构）
+          .\b2.exe `
+            toolset=msvc-14.3 `  # VS2022对应工具集版本
+            architecture=x86 `
+            address-model=64 `  # 64位架构
+            --prefix="${{ env.BOOST_INSTALL_DIR }}" `  # 安装路径
+            --with-filesystem `
+            --with-program_options `
+            --with-iostreams `
+            --with-regex `  # AzerothCore必需组件
+            install
+        shell: pwsh
+
+      - name: 设置BOOST_ROOT系统环境变量
+        run: |
+          # 设置当前会话环境变量
+          $env:BOOST_ROOT = "${{ env.BOOST_INSTALL_DIR }}"
+          # 设置系统级环境变量（持久化）
+          setx BOOST_ROOT "${{ env.BOOST_INSTALL_DIR }}" /M
+          # 验证环境变量和路径
+          Write-Host "当前BOOST_ROOT: $env:BOOST_ROOT"
+          if (Test-Path "$env:BOOST_ROOT") {
+            Write-Host "Boost安装目录验证成功: $env:BOOST_ROOT"
+            Write-Host "目录内容: $(Get-ChildItem "$env:BOOST_ROOT" | Select-Object -ExpandProperty Name)"
+          } else {
+            Write-Error "Boost安装目录不存在: $env:BOOST_ROOT"
+          }
         shell: pwsh
 
       - name: 创建构建目录
@@ -71,23 +111,27 @@ jobs:
           New-Item -ItemType Directory -Path ${{ env.INSTALL_DIR }} -Force | Out-Null
         shell: pwsh
 
-      - name: CMake生成解决方案（使用vcpkg工具链）
+      - name: CMake生成解决方案（适配Boost 1.89.0）
         run: |
           cmake `
             -G "${{ env.VS_VERSION }}" `
             -A ${{ env.PLATFORM }} `
             -S "${{ env.SOURCE_DIR }}" `
             -B "${{ env.BUILD_DIR }}" `
-            -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake" `  # 关键：使用vcpkg工具链
-            -DCMAKE_POLICY_DEFAULT_CMP0144=NEW `
-            -DCMAKE_POLICY_DEFAULT_CMP0167=OLD `
+            -DCMAKE_POLICY_DEFAULT_CMP0144=NEW `  # 启用BOOST_ROOT识别
+            -DCMAKE_POLICY_DEFAULT_CMP0167=OLD `  # 兼容FindBoost模块
+            -DBOOST_ROOT="${{ env.BOOST_INSTALL_DIR }}" `  # 显式指定Boost路径
+            -DBoost_INCLUDE_DIR="${{ env.BOOST_INSTALL_DIR }}/include" `  # 头文件路径
+            -DBoost_LIBRARY_DIR="${{ env.BOOST_INSTALL_DIR }}/lib" `  # 库文件路径
             -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
             -DCMAKE_BUILD_TYPE="${{ env.CONFIG }}" `
             -DBUILD_AZEROTHCORE_TESTS=OFF `
             -DSCRIPTS=static `
-            -DTOOLS=ON
+            -DTOOLS=ON `
+            -DMYSQL_ADD_INCLUDE_PATH="C:\Program Files\MySQL\MySQL Server 8.0\include" `
+            -DMYSQL_LIBRARY="C:\Program Files\MySQL\MySQL Server 8.0\lib\libmysql.lib" `
+            -DOPENSSL_ROOT_DIR="C:\Program Files\OpenSSL-Win64"
         shell: pwsh
-        # 注意：vcpkg会自动处理依赖路径，无需手动指定MySQL/Boost/OpenSSL路径
 
       - name: 使用VS2022构建解决方案
         run: |
