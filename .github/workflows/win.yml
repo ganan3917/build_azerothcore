@@ -1,9 +1,9 @@
-name: Build AzerothCore with VS2022 (With Boost 1.89.0 Install)
+name: Build AzerothCore with VS2022 (Fixed Boost Download)
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 19 * * *'
+    - cron: '0 19 * * *'  # 北京时间每天3点（UTC时间19点）
 
 env:
   # 核心配置
@@ -18,7 +18,7 @@ env:
   PLATFORM: "x64"
   CONFIG: "Release"
   
-  # Boost 配置（指定版本、安装路径和下载链接）
+  # Boost 配置
   BOOST_VERSION: "1.89.0"
   BOOST_INSTALL_DIR: "C:/local/boost_1_89_0"
   BOOST_EXE_URL: "https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe"
@@ -27,17 +27,16 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      # 步骤1：安装Boost 1.89.0并配置环境变量
+      # 步骤1：安装Boost 1.89.0（修复下载重试参数错误）
       - name: 安装Boost 1.89.0 (msvc-14.3)
         run: |
-          # 定义Boost安装路径
           $boostInstallDir = "${{ env.BOOST_INSTALL_DIR }}"
           $boostExe = "boost-installer.exe"
+          $boostUrl = "${{ env.BOOST_EXE_URL }}"
           
-          # 检查是否已安装（通过关键文件判断）
+          # 检查是否已安装
           $boostInstalled = $false
           if (Test-Path $boostInstallDir) {
-            # 验证include和lib目录是否存在
             $includePath = Join-Path $boostInstallDir "include\boost"
             $libFiles = Get-ChildItem -Path (Join-Path $boostInstallDir "lib") -Filter "boost_*.lib" -ErrorAction SilentlyContinue
             if (Test-Path $includePath -and $libFiles.Count -gt 0) {
@@ -51,17 +50,39 @@ jobs:
           
           # 未安装时执行安装
           if (-not $boostInstalled) {
-            # 下载Boost安装包
-            Write-Host "从 ${{ env.BOOST_EXE_URL }} 下载Boost安装包"
-            Invoke-WebRequest -Uri ${{ env.BOOST_EXE_URL }} -OutFile $boostExe -UseBasicParsing -RetryCount 3 -RetryDelaySec 5
+            # 手动实现下载重试（替代-RetryCount和-RetryDelaySec）
+            $maxRetries = 3  # 最大重试次数
+            $retryDelaySec = 5  # 重试间隔（秒）
+            $success = $false
             
-            # 创建安装目录（确保父目录存在）
+            for ($i = 1; $i -le $maxRetries; $i++) {
+              try {
+                Write-Host "第 $i 次尝试下载Boost安装包（共 $maxRetries 次）"
+                Invoke-WebRequest -Uri $boostUrl -OutFile $boostExe -UseBasicParsing
+                $success = $true
+                break  # 下载成功则退出循环
+              } catch {
+                Write-Warning "第 $i 次下载失败: $_"
+                if ($i -lt $maxRetries) {
+                  Write-Host "等待 $retryDelaySec 秒后重试..."
+                  Start-Sleep -Seconds $retryDelaySec
+                }
+              }
+            }
+            
+            # 检查下载是否成功
+            if (-not $success -or -not (Test-Path $boostExe)) {
+              Write-Error "经过 $maxRetries 次尝试，仍无法下载Boost安装包"
+              exit 1
+            }
+            
+            # 创建安装目录父目录
             $parentDir = Split-Path $boostInstallDir -Parent
             if (-not (Test-Path $parentDir)) {
               New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
             }
             
-            # 静默安装Boost（指定安装路径）
+            # 静默安装Boost
             Write-Host "安装Boost到: $boostInstallDir"
             Start-Process -FilePath $boostExe -ArgumentList "/S --prefix=`"$boostInstallDir`"" -Wait -NoNewWindow -PassThru
             
@@ -75,17 +96,14 @@ jobs:
             Write-Host "Boost 1.89.0安装成功"
           }
           
-          # 设置系统环境变量BOOST_ROOT（当前会话和系统级）
+          # 设置环境变量BOOST_ROOT
           Write-Host "设置环境变量 BOOST_ROOT = $boostInstallDir"
-          # 系统级环境变量（持久化）
           [Environment]::SetEnvironmentVariable("BOOST_ROOT", $boostInstallDir, "Machine")
-          # 当前会话环境变量（立即生效）
           $env:BOOST_ROOT = $boostInstallDir
           
-          # 将Boost的lib目录添加到Path（可选，部分场景需要）
+          # 添加Boost lib到Path
           $boostLibDir = Join-Path $boostInstallDir "lib"
           if (-not ($env:Path -like "*$boostLibDir*")) {
-            Write-Host "将Boost lib目录添加到Path: $boostLibDir"
             $newPath = "$env:Path;$boostLibDir"
             [Environment]::SetEnvironmentVariable("Path", $newPath, "Machine")
             $env:Path = $newPath
@@ -115,10 +133,8 @@ jobs:
             $targetPath = Join-Path $modulesPath $moduleName
             
             if (-not (Test-Path $targetPath)) {
-              Write-Host "克隆模块: $module"
               git clone "https://github.com/$module.git" $targetPath
             } else {
-              Write-Host "更新模块: $moduleName"
               Set-Location $targetPath
               git pull
               Set-Location ${{ github.workspace }}
@@ -133,7 +149,7 @@ jobs:
           New-Item -ItemType Directory -Path ${{ env.INSTALL_DIR }} -Force | Out-Null
         shell: pwsh
 
-      # 步骤5：CMake生成解决方案（使用已安装的Boost）
+      # 步骤5：CMake生成解决方案
       - name: CMake生成解决方案
         run: |
           cmake `
@@ -143,7 +159,7 @@ jobs:
             -B "${{ env.BUILD_DIR }}" `
             -DCMAKE_POLICY_DEFAULT_CMP0144=NEW `
             -DCMAKE_POLICY_DEFAULT_CMP0167=OLD `
-            -DBOOST_ROOT="${{ env.BOOST_INSTALL_DIR }}" `  # 使用环境变量中的Boost路径
+            -DBOOST_ROOT="${{ env.BOOST_INSTALL_DIR }}" `
             -DBoost_INCLUDE_DIR="${{ env.BOOST_INSTALL_DIR }}\include" `
             -DBoost_LIBRARY_DIR="${{ env.BOOST_INSTALL_DIR }}\lib" `
             -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
