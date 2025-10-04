@@ -1,24 +1,20 @@
-name: 自定义编译AzerothCore (Windows)
+name: 编译AzerothCore（无模块）(Windows)
 
-# 环境变量：可在此处修改仓库、分支、模块等配置
+# 环境变量：配置仓库、分支、输出目录
 env:
   # 目标仓库地址（默认官方仓库，可替换为自己的fork）
   REPO_URL: "https://github.com/azerothcore/azerothcore-wotlk.git"
   # 目标分支（如main、dev等）
   BRANCH: "main"
-  # 需要启用的模块（多个用逗号分隔，如"modules/mod-ah-bot,modules/mod-cfbg"）
-  MODULES: "modules/mod-ah-bot,modules/mod-transmog"
   # 编译输出目录
   INSTALL_DIR: "./install"
 
 
 # 触发条件：手动触发 + 推送到指定分支 + 北京时间凌晨3点自动运行
 on:
-  # 手动触发：在GitHub页面点击"Run workflow"
   workflow_dispatch:
-  # 定时触发：北京时间每天凌晨3点（UTC时间19:00，因为UTC+8=北京时间）
   schedule:
-    - cron: "0 19 * * *"  # cron格式：分 时 日 月 周（UTC时间）
+    - cron: "0 19 * * *"  # 北京时间每天凌晨3点（UTC+8=北京时间，UTC时间19:00）
 
 
 jobs:
@@ -26,42 +22,32 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        shell: pwsh  # 使用PowerShell处理变量和路径
+        shell: pwsh
 
     steps:
       # 1. 拉取指定仓库和分支的代码
       - name: 拉取源码（指定仓库和分支）
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.repository.full_name }}  # 默认为当前仓库，可改为env.REPO_URL对应的仓库名（格式：owner/repo）
-          ref: ${{ env.BRANCH }}  # 拉取指定分支
-          submodules: false  # 先不自动拉取所有子模块，后续手动处理指定模块
+          repository: ${{ github.event.repository.full_name }}
+          ref: ${{ env.BRANCH }}
+          submodules: false  # 不自动拉取子模块，后续手动处理核心依赖
           fetch-depth: 0
 
-      # 2. 初始化并更新核心子模块（dep依赖）和指定模块
-      - name: 拉取核心依赖和指定模块
+      # 2. 拉取所有核心子模块（仅保留AzerothCore必要依赖，不含自定义模块）
+      - name: 拉取核心子模块（dep等必要依赖）
         run: |
-          # 拉取核心子模块（如dep目录，AzerothCore必须依赖）
-          git submodule update --init --recursive dep/
+          # 递归拉取所有核心子模块（包括dep、src依赖等，无需单独指定模块）
+          git submodule update --init --recursive
 
-          # 拉取env中指定的自定义模块（多个用逗号分割）
-          $modules = $env:MODULES -split ',' | Where-Object { $_ -ne '' }
-          if ($modules.Count -gt 0) {
-            foreach ($module in $modules) {
-              Write-Host "拉取模块：$module"
-              git submodule update --init --recursive $module
-            }
-          }
-
-      # 3. 安装编译依赖（MySQL/OpenSSL等）
-      - name: 安装依赖
+      # 3. 安装编译依赖
+      - name: 安装依赖（MySQL/OpenSSL等）
         run: |
           choco install -y cmake mysql connector-cpp openssl zlib
-          # 配置依赖库路径到环境变量
           echo "C:\Program Files\MySQL\MySQL Connector C++ 8.0\lib64" >> $env:GITHUB_PATH
           echo "C:\Program Files\OpenSSL-Win64\lib" >> $env:GITHUB_PATH
 
-      # 4. 配置VS2022 x64编译环境
+      # 4. 配置VS2022 x64环境
       - name: 初始化VS2022环境
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -82,14 +68,14 @@ jobs:
             -DTOOLS_BUILD=ON `
             -DSCRIPTS=static
 
-      # 6. 使用MSBuild编译解决方案（模拟VS2022手动编译）
+      # 6. 使用MSBuild编译解决方案
       - name: 编译项目
         run: |
           $slnPath = ".\build\AzerothCore.sln"
           msbuild $slnPath `
             /p:Configuration=Release `
             /p:Platform=x64 `
-            /m  # 并行编译
+            /m
 
       # 7. 安装编译结果到指定目录
       - name: 安装输出文件
@@ -102,10 +88,10 @@ jobs:
         run: |
           7z a -tzip azerothcore-${{ env.BRANCH }}-win64.zip ${{ env.INSTALL_DIR }}\*
 
-      # 9. 上传产物（含分支名标识，便于区分）
+      # 9. 上传产物
       - name: 上传编译结果
         uses: actions/upload-artifact@v4
         with:
           name: azerothcore-${{ env.BRANCH }}-exe
           path: azerothcore-${{ env.BRANCH }}-win64.zip
-          retention-days: 14  # 产物保留14天
+          retention-days: 14
