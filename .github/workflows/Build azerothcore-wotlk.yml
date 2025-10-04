@@ -1,4 +1,4 @@
-name: Build AzerothCore modules
+name: Build azerothcore-wotlk
 on:
   workflow_dispatch:
   schedule:
@@ -93,7 +93,7 @@ jobs:
           tag_name: "build-${{ steps.ts.outputs.date }}-${{ steps.ts.outputs.utc }}"
           release_name: "Build AzerothCore No modules for linux ${{ steps.ts.outputs.sh }}"
           body: |
-            ### auto Build AzerothCore modules
+            ### Auto Build Azerothcore-Wotlk
             - 构建时间：UTC ${{ steps.ts.outputs.utc }}
             - 核心分支：${{ env.ACORE_BRANCH }}
             - 成功模块：${{ steps.modules.outputs.success }}
