@@ -84,9 +84,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.BUILD_AZEROTHCORE }}
         with:
           tag_name: "build-${{ steps.ts.outputs.date }}-${{ steps.ts.outputs.utc }}"
-          release_name: "AzerothCore 自动构建 ${{ steps.ts.outputs.sh }}"
+          release_name: "Build AzerothCore No modules for linux ${{ steps.ts.outputs.sh }}"
           body: |
-            ### 构建信息
+            ### 构建信息 AzerothCore No modules
             - 构建时间：UTC ${{ steps.ts.outputs.utc }}（北京时间 ${{ steps.ts.outputs.sh }}）
             - 核心版本：${{ env.ACORE_BRANCH }}
             - 编译类型：${{ env.BUILD_TYPE }}
