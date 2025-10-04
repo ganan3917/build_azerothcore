@@ -1,156 +1,41 @@
-name: AzerothCore 编译工作流
+name: 安装 Boost 1.89.0 (MSVC 14.3 64位)
 
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
-  schedule:
-    - cron: '0 19 * * *'  # 北京时间每天3点（UTC+8）
 
-env:
-  AC_REPO: "https://github.com/azerothcore/azerothcore-wotlk.git"
-  AC_BRANCH: "master"
-  AC_MODULES: "https://github.com/azerothcore/mod-ah-bot.git https://github.com/azerothcore/mod-transmog.git"
-  BUILD_DIR: "${{ github.workspace }}/build"
-  INSTALL_DIR: "${{ github.workspace }}/install"
 jobs:
-  build:
-    runs-on: windows-2022
-    
+  install-boost:
+    runs-on: windows-latest
     steps:
-      - name: 检查系统环境
-        run: |
-          echo "系统信息: $env:OS"
-          git --version
-          cmake --version
-          mysql --version
-          vswhere -latest -property installationPath
-        shell: pwsh
-
-
-      - name: 方式1：从 Boost 官方源下载（稳定）
-        uses: carlosperate/download-file-action@v2  # 可靠的文件下载 Action
+      - name: 从国内镜像下载 Boost 安装包
+        uses: carlosperate/download-file-action@v2
         with:
-          file-url: "https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe"
-          file-name: "boost_installer.exe"  # 重命名为简短名称，方便后续调用
-          location: "./"  # 下载到工作目录根路径
+          file-url: "https://mirrors.aliyun.com/boost/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe"
+          file-name: "boost_installer.exe"
+          location: "./"
 
-      # # 方式2：若安装包已上传到项目仓库，可通过 checkout 读取（适合内网/自定义包）
-      # - name: 检出项目代码（含本地 Boost 安装包）
-      #   uses: actions/checkout@v4
-      # - name: 重命名本地安装包（可选）
-      #   run: ren "./path/to/boost_1_89_0-msvc-14.3-64.exe" "boost_installer.exe"
-      #   shell: cmd  # Windows 环境用 cmd 执行重命名
-
-      ########################################################################
-      # 步骤 2：静默安装 Boost（核心步骤）
-      ########################################################################
-      - name: 静默安装 Boost 到指定路径
+      - name: 静默安装 Boost 到工作目录
         run: |
-          # 关键参数说明：
-          # /S：静默安装（无界面）
-          # /INSTALLDIR：指定安装路径（建议用绝对路径，避免权限问题）
-          # /NOICONS：不创建桌面快捷方式（可选，减少冗余）
-          .\boost_installer.exe /S /INSTALLDIR="C:\Boost\1.89.0" /NOICONS
-        shell: powershell  # 使用 PowerShell 执行命令，兼容性更好
+          .\boost_installer.exe /S /INSTALLDIR="${{ github.workspace }}\boost" /NOICONS
+        shell: powershell
 
-      ########################################################################
-      # 步骤 3：验证安装（可选，用于确认安装成功）
-      ########################################################################
       - name: 验证 Boost 安装目录
         run: |
-          # 检查安装目录是否存在，以及关键文件（如 boost.config）
-          if (Test-Path "C:\Boost\1.89.0") {
-            Write-Host "Boost 安装目录存在！"
-            Get-ChildItem -Path "C:\Boost\1.89.0" -Recurse | Select-Object -First 10  # 列出前10个文件，确认结构
+          $boostPath = "${{ github.workspace }}\boost"
+          if (Test-Path $boostPath) {
+            Write-Host "Boost 安装目录存在：$boostPath"
+            Get-ChildItem -Path $boostPath -Recurse | Select-Object -First 10
           } else {
             Write-Error "Boost 安装目录不存在，安装失败！"
-            exit 1  # 安装失败时终止工作流
+            exit 1
           }
         shell: powershell
 
-      ########################################################################
-      # 步骤 4：配置环境变量（可选，用于后续编译项目时调用 Boost）
-      ########################################################################
-      - name: 设置 Boost 环境变量（供后续步骤使用）
+      - name: 设置 Boost 环境变量
         run: |
-          # 设置 BOOST_ROOT（指向安装目录，编译器会自动识别）
-          echo "BOOST_ROOT=C:\Boost\1.89.0" | Out-File -FilePath $env:GITHUB_ENV -Append
-          # 设置 PATH（添加 Boost 的 bin 目录，避免运行时找不到依赖）
-          echo "PATH=$env:PATH;C:\Boost\1.89.0\lib64-msvc-14.3" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $boostPath = "${{ github.workspace }}\boost"
+          echo "BOOST_ROOT=$boostPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "PATH=$env:PATH;$boostPath\lib64-msvc-14.3" | Out-File -FilePath $env:GITHUB_ENV -Append
         shell: powershell
-      
-      - name: 配置环境变量（VS2022和工具链）
-        run: |
-          $vsPath = vswhere -latest -property installationPath
-          echo "VS安装路径: $vsPath"
-          
-          & "$vsPath\VC\Auxiliary\Build\vcvars64.bat"
-          
-          echo "$vsPath\MSBuild\Current\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "$vsPath\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          
-          $mysqlPath = "C:\Program Files\MySQL\MySQL Server 8.0\bin"
-          if (Test-Path $mysqlPath) {
-            echo "$mysqlPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          }
-        shell: pwsh
-      
-      
-      - name: 克隆AzerothCore源码
-        run: |
-          git clone --branch ${{ env.AC_BRANCH }} --recursive ${{ env.AC_REPO }} azerothcore
-        shell: cmd
-      
-      - name: 安装模块
-        run: |
-          cd azerothcore/modules
-          $modules = "${{ env.AC_MODULES }}".Split()
-          foreach ($module in $modules) {
-            git clone $module
-          }
-        shell: pwsh
-      
-      - name: 创建构建目录
-        run: |
-          mkdir ${{ env.BUILD_DIR }}
-          mkdir ${{ env.INSTALL_DIR }}
-        shell: cmd
-      
-      - name: 运行CMake生成解决方案
-        run: |
-          cd ${{ env.BUILD_DIR }}
-          cmake -G "Visual Studio 17 2022" -A x64 `
-            -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
-            -DBOOST_ROOT="${{ env.BOOST_ROOT }}" `
-            -DWITH_WARNINGS=ON `
-            -DSCRIPTS=static `
-            -DTOOLS=ON `
-            -DENABLE_EXTRA_LOGS=OFF `
-            -DUSE_SCRIPTPCH=ON `
-            ${{ github.workspace }}/azerothcore
-        shell: pwsh
-      
-      - name: 使用VS2022编译
-        run: |
-          cd ${{ env.BUILD_DIR }}
-          msbuild AzerothCore.sln /p:Configuration=Release /p:Platform=x64 /m /flp:LogFile=compile.log
-        shell: cmd
-        continue-on-error: false
-      
-      - name: 安装编译结果
-        run: |
-          cd ${{ env.BUILD_DIR }}
-          msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 /m
-        shell: cmd
-      
-      - name: 上传编译日志（失败时）
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: compile-logs
-          path: ${{ env.BUILD_DIR }}/compile.log
-      
-      - name: 上传编译产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: azerothcore-build
-          path: ${{ env.INSTALL_DIR }}
