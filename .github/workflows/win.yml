@@ -1,9 +1,9 @@
-name: Build AzerothCore with VS2022 (Only Presence Check - Fixed)
+name: Build AzerothCore with VS2022 (With Boost 1.89.0 Install)
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 19 * * *'  # 北京时间每天3点
+    - cron: '0 19 * * *'  # 北京时间每天3点（UTC时间19点）
 
 env:
   # 核心配置
@@ -18,309 +18,81 @@ env:
   PLATFORM: "x64"
   CONFIG: "Release"
   
-  # 依赖配置（仅指定安装路径，不检查版本）
+  # Boost 配置（指定版本、安装路径和下载链接）
   BOOST_VERSION: "1.89.0"
   BOOST_INSTALL_DIR: "C:/local/boost_1_89_0"
-  MYSQL_INSTALL_DIR: "C:/Program Files/MySQL/MySQL Server 8.4"
-  GIT_INSTALL_DIR: "C:/Program Files/Git"
-  CMAKE_INSTALL_DIR: "C:/Program Files/CMake"
-  OPENSSL_INSTALL_DIR: "C:/Program Files/OpenSSL-Win64"
-  
-  # 下载链接
   BOOST_EXE_URL: "https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe"
-  MYSQL_URL: "https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-8.4.0-winx64.msi"
-  GIT_URL: "https://github.com/git-for-windows/git/releases/download/v2.45.2.windows.1/Git-2.45.2-64-bit.exe"
-  CMAKE_URL: "https://github.com/Kitware/CMake/releases/download/v3.30.1/cmake-3.30.1-windows-x86_64.msi"
-  OPENSSL_URL: "https://slproweb.com/download/Win64OpenSSL-3_0_14.exe"
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-latest  # 自定义Runner请替换为 runs-on: [self-hosted, windows]
     steps:
-      - name: 环境变量检查与设置工具函数（修复语法错误）
+      # 步骤1：安装Boost 1.89.0并配置环境变量
+      - name: 安装Boost 1.89.0 (msvc-14.3)
         run: |
-          # 环境变量检查与设置函数（修复：动态环境变量赋值语法 ${env:$Name}）
-          function Ensure-EnvVariable {
-            param(
-              [string]$Name,
-              [string]$Value,
-              [bool]$IsPath = $false
-            )
-            $currentValue = [Environment]::GetEnvironmentVariable($Name, "Machine")
-            if (-not $currentValue -or ($IsPath -and $currentValue -notlike "*$Value*")) {
-              Write-Host "设置环境变量 $Name = $Value"
-              if ($IsPath -and $currentValue) {
-                $newValue = "$currentValue;$Value"
-              } else {
-                $newValue = $Value
-              }
-              # 1. 修复：系统级环境变量设置（原逻辑不变）
-              [Environment]::SetEnvironmentVariable($Name, $newValue, "Machine")
-              # 2. 修复：当前会话环境变量设置（关键语法修正：$env:$Name → ${env:$Name}）
-              ${env:$Name} = $newValue
-            }
-          }
-
-          # 保存函数到临时文件供后续步骤使用
-          ${function:Ensure-EnvVariable} | Out-File -FilePath "${{ github.workspace }}\Ensure-EnvVariable.ps1" -Encoding utf8
-        shell: pwsh
-
-      - name: 检测并安装 Git（仅检查是否存在）
-        run: |
-          . "${{ github.workspace }}\Ensure-EnvVariable.ps1"
+          # 定义Boost安装路径
+          $boostInstallDir = "${{ env.BOOST_INSTALL_DIR }}"
+          $boostExe = "boost-installer.exe"
           
-          $gitInstalled = $false
-          
-          # 检查是否已安装（仅通过命令是否可执行判断）
-          try {
-            git --version 2>&1 | Out-Null
-            if ($LASTEXITCODE -eq 0) {
-              $gitInstalled = $true
-              Write-Host "已检测到 Git 安装"
-            }
-          } catch {
-            Write-Host "未检测到 Git 安装"
-          }
-          
-          # 未安装时进行安装
-          if (-not $gitInstalled) {
-            $gitExe = "git-installer.exe"
-            Write-Host "从 $env:GIT_URL 下载 Git 安装包"
-            Invoke-WebRequest -Uri $env:GIT_URL -OutFile $gitExe -UseBasicParsing -RetryCount 3 -RetryDelaySec 5
-            
-            Write-Host "安装 Git 到 $env:GIT_INSTALL_DIR"
-            Start-Process -FilePath $gitExe -ArgumentList "/verysilent /norestart /components=""icons,ext\reg\shellhere,assoc,assoc_sh""" -Wait -NoNewWindow
-            
-            # 验证安装目录
-            if (-not (Test-Path $env:GIT_INSTALL_DIR)) {
-              Write-Error "Git 安装失败，未找到安装目录"
-              exit 1
-            }
-            
-            # 配置环境变量（调用修复后的函数）
-            Ensure-EnvVariable -Name "Path" -Value "$env:GIT_INSTALL_DIR\bin;$env:GIT_INSTALL_DIR\cmd" -IsPath $true
-            
-            # 最终验证命令可用性
-            git --version
-            if ($LASTEXITCODE -ne 0) {
-              Write-Error "Git 安装后无法正常使用"
-              exit 1
-            }
-          }
-        shell: pwsh
-
-      - name: 检测并安装 CMake（仅检查是否存在）
-        run: |
-          . "${{ github.workspace }}\Ensure-EnvVariable.ps1"
-          
-          $cmakeInstalled = $false
-          
-          # 检查是否已安装（仅通过命令是否可执行判断）
-          try {
-            cmake --version 2>&1 | Out-Null
-            if ($LASTEXITCODE -eq 0) {
-              $cmakeInstalled = $true
-              Write-Host "已检测到 CMake 安装"
-            }
-          } catch {
-            Write-Host "未检测到 CMake 安装"
-          }
-          
-          # 未安装时进行安装
-          if (-not $cmakeInstalled) {
-            $cmakeExe = "cmake-installer.msi"
-            Write-Host "从 $env:CMAKE_URL 下载 CMake 安装包"
-            Invoke-WebRequest -Uri $env:CMAKE_URL -OutFile $cmakeExe -UseBasicParsing -RetryCount 3 -RetryDelaySec 5
-            
-            Write-Host "安装 CMake 到 $env:CMAKE_INSTALL_DIR"
-            Start-Process -FilePath "msiexec.exe" -ArgumentList "/i $cmakeExe /qn /norestart ADD_CMAKE_TO_PATH=System" -Wait -NoNewWindow
-            
-            # 验证安装目录
-            if (-not (Test-Path $env:CMAKE_INSTALL_DIR)) {
-              Write-Error "CMake 安装失败，未找到安装目录"
-              exit 1
-            }
-            
-            # 配置环境变量（调用修复后的函数）
-            Ensure-EnvVariable -Name "Path" -Value "$env:CMAKE_INSTALL_DIR\bin" -IsPath $true
-            
-            # 最终验证命令可用性
-            cmake --version
-            if ($LASTEXITCODE -ne 0) {
-              Write-Error "CMake 安装后无法正常使用"
-              exit 1
-            }
-          }
-        shell: pwsh
-
-      - name: 检测并安装 MySQL（仅检查是否存在）
-        run: |
-          . "${{ github.workspace }}\Ensure-EnvVariable.ps1"
-          
-          $mysqlInstalled = $false
-          
-          # 检查是否已安装（通过命令或关键文件判断）
-          try {
-            # 尝试执行命令
-            mysql --version 2>&1 | Out-Null
-            if ($LASTEXITCODE -eq 0) {
-              $mysqlInstalled = $true
-              Write-Host "已检测到 MySQL 安装"
-            }
-          } catch {
-            # 命令不可用则检查关键文件
-            if (Test-Path "$env:MYSQL_INSTALL_DIR\bin\mysql.exe" -and Test-Path "$env:MYSQL_INSTALL_DIR\lib\libmysql.lib") {
-              $mysqlInstalled = $true
-              Write-Host "已检测到 MySQL 安装（通过文件路径）"
-            } else {
-              Write-Host "未检测到 MySQL 安装"
-            }
-          }
-          
-          # 未安装时进行安装
-          if (-not $mysqlInstalled) {
-            $mysqlExe = "mysql-installer.msi"
-            Write-Host "从 $env:MYSQL_URL 下载 MySQL 安装包"
-            Invoke-WebRequest -Uri $env:MYSQL_URL -OutFile $mysqlExe -UseBasicParsing -RetryCount 3 -RetryDelaySec 5
-            
-            Write-Host "安装 MySQL 到 $env:MYSQL_INSTALL_DIR"
-            Start-Process -FilePath "msiexec.exe" -ArgumentList "/i $mysqlExe /qn INSTALLDIR=""$env:MYSQL_INSTALL_DIR"" /norestart" -Wait -NoNewWindow
-            
-            # 验证关键文件
-            if (-not (Test-Path "$env:MYSQL_INSTALL_DIR\bin\mysql.exe") -or -not (Test-Path "$env:MYSQL_INSTALL_DIR\lib\libmysql.lib")) {
-              Write-Error "MySQL 安装失败，缺少关键文件"
-              exit 1
-            }
-            
-            # 配置环境变量（调用修复后的函数）
-            Ensure-EnvVariable -Name "Path" -Value "$env:MYSQL_INSTALL_DIR\bin" -IsPath $true
-            
-            # 最终验证命令可用性
-            mysql --version
-            if ($LASTEXITCODE -ne 0) {
-              Write-Error "MySQL 安装后无法正常使用"
-              exit 1
-            }
-          }
-        shell: pwsh
-
-      - name: 检测并安装 OpenSSL（仅检查是否存在）
-        run: |
-          . "${{ github.workspace }}\Ensure-EnvVariable.ps1"
-          
-          $opensslInstalled = $false
-          
-          # 检查是否已安装（通过命令或关键文件判断）
-          try {
-            # 尝试执行命令
-            openssl version 2>&1 | Out-Null
-            if ($LASTEXITCODE -eq 0) {
-              $opensslInstalled = $true
-              Write-Host "已检测到 OpenSSL 安装"
-            }
-          } catch {
-            # 命令不可用则检查关键文件
-            if (Test-Path "$env:OPENSSL_INSTALL_DIR\bin\openssl.exe" -and Test-Path "$env:OPENSSL_INSTALL_DIR\include\openssl") {
-              $opensslInstalled = $true
-              Write-Host "已检测到 OpenSSL 安装（通过文件路径）"
-            } else {
-              Write-Host "未检测到 OpenSSL 安装"
-            }
-          }
-          
-          # 未安装时进行安装
-          if (-not $opensslInstalled) {
-            $opensslExe = "openssl-installer.exe"
-            Write-Host "从 $env:OPENSSL_URL 下载 OpenSSL 安装包"
-            Invoke-WebRequest -Uri $env:OPENSSL_URL -OutFile $opensslExe -UseBasicParsing -RetryCount 3 -RetryDelaySec 5
-            
-            Write-Host "安装 OpenSSL 到 $env:OPENSSL_INSTALL_DIR"
-            Start-Process -FilePath $opensslExe -ArgumentList "/S /verysilent /norestart /DIR=""$env:OPENSSL_INSTALL_DIR""" -Wait -NoNewWindow
-            
-            # 验证关键文件
-            if (-not (Test-Path "$env:OPENSSL_INSTALL_DIR\bin\openssl.exe") -or -not (Test-Path "$env:OPENSSL_INSTALL_DIR\include\openssl")) {
-              Write-Error "OpenSSL 安装失败，缺少关键文件"
-              exit 1
-            }
-            
-            # 配置环境变量（调用修复后的函数）
-            Ensure-EnvVariable -Name "Path" -Value "$env:OPENSSL_INSTALL_DIR\bin" -IsPath $true
-            Ensure-EnvVariable -Name "OPENSSL_ROOT_DIR" -Value $env:OPENSSL_INSTALL_DIR
-            
-            # 最终验证命令可用性
-            openssl version
-            if ($LASTEXITCODE -ne 0) {
-              Write-Error "OpenSSL 安装后无法正常使用"
-              exit 1
-            }
-          }
-        shell: pwsh
-
-      - name: 检测并安装 Boost（仅检查是否存在）
-        run: |
-          . "${{ github.workspace }}\Ensure-EnvVariable.ps1"
-          
+          # 检查是否已安装（通过关键文件判断）
           $boostInstalled = $false
-          
-          # 检查是否已安装（仅通过关键文件判断，不验证版本）
-          if (Test-Path $env:BOOST_INSTALL_DIR) {
-            if (Test-Path "$env:BOOST_INSTALL_DIR\include\boost" -and (Get-ChildItem "$env:BOOST_INSTALL_DIR\lib" -Filter "boost_*.lib" | Measure-Object).Count -gt 0) {
+          if (Test-Path $boostInstallDir) {
+            # 验证include和lib目录是否存在
+            $includePath = Join-Path $boostInstallDir "include\boost"
+            $libFiles = Get-ChildItem -Path (Join-Path $boostInstallDir "lib") -Filter "boost_*.lib" -ErrorAction SilentlyContinue
+            if (Test-Path $includePath -and $libFiles.Count -gt 0) {
               $boostInstalled = $true
-              Write-Host "已检测到 Boost 安装"
+              Write-Host "已检测到Boost 1.89.0安装在: $boostInstallDir"
             } else {
-              Write-Host "Boost 目录存在但文件不完整，需要重新安装"
+              Write-Host "Boost目录存在但文件不完整，将重新安装"
+              Remove-Item -Path $boostInstallDir -Recurse -Force -ErrorAction SilentlyContinue
             }
-          } else {
-            Write-Host "未检测到 Boost 安装"
           }
           
-          # 未安装时进行安装
+          # 未安装时执行安装
           if (-not $boostInstalled) {
-            # 清理可能的残留文件
-            if (Test-Path $env:BOOST_INSTALL_DIR) {
-              Remove-Item -Path $env:BOOST_INSTALL_DIR -Recurse -Force -ErrorAction SilentlyContinue
+            # 下载Boost安装包
+            Write-Host "从 ${{ env.BOOST_EXE_URL }} 下载Boost安装包"
+            Invoke-WebRequest -Uri ${{ env.BOOST_EXE_URL }} -OutFile $boostExe -UseBasicParsing -RetryCount 3 -RetryDelaySec 5
+            
+            # 创建安装目录（确保父目录存在）
+            $parentDir = Split-Path $boostInstallDir -Parent
+            if (-not (Test-Path $parentDir)) {
+              New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
             }
             
-            $boostExe = "boost-installer.exe"
-            Write-Host "从 $env:BOOST_EXE_URL 下载 Boost 安装包"
-            Invoke-WebRequest -Uri $env:BOOST_EXE_URL -OutFile $boostExe -UseBasicParsing -RetryCount 3 -RetryDelaySec 5
+            # 静默安装Boost（指定安装路径）
+            Write-Host "安装Boost到: $boostInstallDir"
+            Start-Process -FilePath $boostExe -ArgumentList "/S --prefix=`"$boostInstallDir`"" -Wait -NoNewWindow -PassThru
             
-            Write-Host "安装 Boost 到 $env:BOOST_INSTALL_DIR"
-            Start-Process -FilePath $boostExe -ArgumentList "/S --prefix=`"$env:BOOST_INSTALL_DIR`"" -Wait -NoNewWindow
-            
-            # 验证关键文件（不检查版本）
-            if (-not (Test-Path "$env:BOOST_INSTALL_DIR\include\boost") -or (Get-ChildItem "$env:BOOST_INSTALL_DIR\lib" -Filter "boost_*.lib" | Measure-Object).Count -eq 0) {
-              Write-Error "Boost 安装失败，缺少关键文件"
+            # 验证安装结果
+            $includePath = Join-Path $boostInstallDir "include\boost"
+            $libFiles = Get-ChildItem -Path (Join-Path $boostInstallDir "lib") -Filter "boost_*.lib" -ErrorAction SilentlyContinue
+            if (-not (Test-Path $includePath) -or $libFiles.Count -eq 0) {
+              Write-Error "Boost安装失败，缺少关键文件（include或lib）"
               exit 1
             }
-            
-            # 配置环境变量（调用修复后的函数）
-            Ensure-EnvVariable -Name "BOOST_ROOT" -Value $env:BOOST_INSTALL_DIR
-            Ensure-EnvVariable -Name "Path" -Value "$env:BOOST_INSTALL_DIR\lib" -IsPath $true
-            
-            Write-Host "Boost 安装成功"
+            Write-Host "Boost 1.89.0安装成功"
+          }
+          
+          # 设置系统环境变量BOOST_ROOT（当前会话和系统级）
+          Write-Host "设置环境变量 BOOST_ROOT = $boostInstallDir"
+          # 系统级环境变量（持久化）
+          [Environment]::SetEnvironmentVariable("BOOST_ROOT", $boostInstallDir, "Machine")
+          # 当前会话环境变量（立即生效）
+          $env:BOOST_ROOT = $boostInstallDir
+          
+          # 将Boost的lib目录添加到Path（可选，部分场景需要）
+          $boostLibDir = Join-Path $boostInstallDir "lib"
+          if (-not ($env:Path -like "*$boostLibDir*")) {
+            Write-Host "将Boost lib目录添加到Path: $boostLibDir"
+            $newPath = "$env:Path;$boostLibDir"
+            [Environment]::SetEnvironmentVariable("Path", $newPath, "Machine")
+            $env:Path = $newPath
           }
         shell: pwsh
 
-      - name: 检测 Visual Studio 2022（仅检查是否存在）
-        run: |
-          # 检查VS2022是否安装（通过vswhere工具）
-          $vsWherePath = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          if (-not (Test-Path $vsWherePath)) {
-            Write-Error "未找到 vswhere.exe，无法检测 Visual Studio 安装情况"
-            exit 1
-          }
-          
-          # 仅检查是否存在VS2022安装（不验证版本和组件）
-          $vsInstallation = & $vsWherePath -version 17.0 -products * -latest
-          if (-not $vsInstallation) {
-            Write-Error "未检测到 Visual Studio 2022 安装，请先安装"
-            exit 1
-          }
-          
-          Write-Host "已检测到 Visual Studio 2022 安装"
-        shell: pwsh
-
+      # 步骤2：拉取AzerothCore源码
       - name: 拉取AzerothCore源码
         uses: actions/checkout@v4
         with:
@@ -330,7 +102,8 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: 拉取模块
+      # 步骤3：拉取/更新模块
+      - name: 拉取/更新模块
         run: |
           $modulesPath = "${{ env.SOURCE_DIR }}\modules"
           if (-not (Test-Path $modulesPath)) {
@@ -340,10 +113,12 @@ jobs:
           foreach ($module in $env:MODULES -split ' ') {
             $moduleName = $module.Split('/')[-1]
             $targetPath = Join-Path $modulesPath $moduleName
+            
             if (-not (Test-Path $targetPath)) {
+              Write-Host "克隆模块: $module"
               git clone "https://github.com/$module.git" $targetPath
             } else {
-              Write-Host "模块 $moduleName 已存在，跳过克隆"
+              Write-Host "更新模块: $moduleName"
               Set-Location $targetPath
               git pull
               Set-Location ${{ github.workspace }}
@@ -351,12 +126,14 @@ jobs:
           }
         shell: pwsh
 
-      - name: 创建构建目录
+      # 步骤4：创建构建/产物目录
+      - name: 创建构建/产物目录
         run: |
           New-Item -ItemType Directory -Path ${{ env.BUILD_DIR }} -Force | Out-Null
           New-Item -ItemType Directory -Path ${{ env.INSTALL_DIR }} -Force | Out-Null
         shell: pwsh
 
+      # 步骤5：CMake生成解决方案（使用已安装的Boost）
       - name: CMake生成解决方案
         run: |
           cmake `
@@ -366,45 +143,58 @@ jobs:
             -B "${{ env.BUILD_DIR }}" `
             -DCMAKE_POLICY_DEFAULT_CMP0144=NEW `
             -DCMAKE_POLICY_DEFAULT_CMP0167=OLD `
-            -DBOOST_ROOT="${{ env.BOOST_INSTALL_DIR }}" `
+            -DBOOST_ROOT="${{ env.BOOST_INSTALL_DIR }}" `  # 使用环境变量中的Boost路径
             -DBoost_INCLUDE_DIR="${{ env.BOOST_INSTALL_DIR }}\include" `
             -DBoost_LIBRARY_DIR="${{ env.BOOST_INSTALL_DIR }}\lib" `
             -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
             -DCMAKE_BUILD_TYPE="${{ env.CONFIG }}" `
             -DBUILD_AZEROTHCORE_TESTS=OFF `
             -DSCRIPTS=static `
-            -DTOOLS=ON `
-            -DMYSQL_ADD_INCLUDE_PATH="${{ env.MYSQL_INSTALL_DIR }}\include" `
-            -DMYSQL_LIBRARY="${{ env.MYSQL_INSTALL_DIR }}\lib\libmysql.lib" `
-            -DOPENSSL_ROOT_DIR="${{ env.OPENSSL_INSTALL_DIR }}"
+            -DTOOLS=ON
         shell: pwsh
 
-      - name: 使用VS2022构建解决方案
+      # 步骤6：VS2022构建解决方案
+      - name: VS2022构建解决方案
         run: |
           $solutionPath = Join-Path ${{ env.BUILD_DIR }} ${{ env.SOLUTION_NAME }}
           if (-not (Test-Path $solutionPath)) {
             Write-Error "CMake未生成解决方案文件: $solutionPath"
             exit 1
           }
-          Write-Host "正在使用VS2022构建解决方案: $solutionPath"
-          msbuild $solutionPath /p:Configuration=${{ env.CONFIG }};Platform=${{ env.PLATFORM }} /t:INSTALL /m /verbosity:minimal
+          
+          msbuild `
+            $solutionPath `
+            /p:Configuration=${{ env.CONFIG }} `
+            /p:Platform=${{ env.PLATFORM }} `
+            /t:INSTALL `
+            /m `
+            /verbosity:minimal
+          
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "构建失败，MSBuild返回码: $LASTEXITCODE"
+            exit 1
+          }
         shell: pwsh
 
+      # 步骤7：打包构建产物
       - name: 打包构建产物
         run: |
           if (-not (Test-Path ${{ env.INSTALL_DIR }})) {
-            Write-Error "构建产物目录不存在: ${{ env.INSTALL_DIR }}"
+            Write-Error "产物目录不存在: ${{ env.INSTALL_DIR }}"
             exit 1
           }
-          $zipName = "azerothcore_${{ env.CONFIG }}_boost-${{ env.BOOST_VERSION }}_$(Get-Date -Format 'yyyyMMdd').zip"
-          Write-Host "正在打包构建产物到: $zipName"
-          Compress-Archive -Path ${{ env.INSTALL_DIR }}\* -DestinationPath $zipName -Force
+          
+          $timestamp = Get-Date -Format 'yyyyMMddHHmmss'
+          $zipName = "azerothcore_${{ env.CONFIG }}_boost-${{ env.BOOST_VERSION }}_${timestamp}.zip"
+          Compress-Archive -Path "${{ env.INSTALL_DIR }}\*" -DestinationPath $zipName -Force
           echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
         shell: pwsh
 
+      # 步骤8：上传构建产物
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: azerothcore-windows-build
           path: ${{ env.ZIP_NAME }}
           retention-days: 14
+          if-no-files-found: error
