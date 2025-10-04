@@ -2,17 +2,17 @@ name: Build AzerothCore modules
 on:
   workflow_dispatch:
   schedule:
-    - cron: 0 19 * * *  # 每天UTC 19点运行
+    - cron: 0 19 * * *
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     env:
-      # 路径配置（调整INSTALL_DIR到BUILD_DIR内部）
-      ROOT_DIR: ./azerothcore          # 克隆根目录
-      BUILD_DIR: ./azerothcore/build   # 编译目录
-      INSTALL_DIR: ./azerothcore/build/install # 安装目录（现在位于BUILD_DIR内部）
-      MODULES_DIR: ./azerothcore/modules # 模块目录
+      # 路径配置
+      ROOT_DIR: ./azerothcore
+      BUILD_DIR: ./azerothcore/build
+      INSTALL_DIR: ./azerothcore/build/install
+      MODULES_DIR: ./azerothcore/modules
       # 核心配置
       ACORE_REPO: "https://github.com/azerothcore/azerothcore-wotlk.git"
       ACORE_BRANCH: "master"
@@ -34,12 +34,12 @@ jobs:
             libbz2-dev libreadline-dev libncurses-dev \
             libboost-all-dev libcurl4-openssl-dev
           sudo apt clean
-      - name: 生成时间戳
+      - name: 生成时间
         id: ts
         run: |
           echo "utc=$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
           echo "sh=$(TZ='Asia/Shanghai' date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
-      - name: 克隆核心仓库
+      - name: 克隆仓库
         run: |
           git clone --branch "${{ env.ACORE_BRANCH }}" "${{ env.ACORE_REPO }}" "${{ env.ROOT_DIR }}"
           cd "${{ env.ROOT_DIR }}" && git submodule update --init --recursive
@@ -63,6 +63,7 @@ jobs:
           done <<< "${{ env.MODULES_INPUT }}"
           echo "success=$(IFS=';'; echo "${success[*]}")" >> $GITHUB_OUTPUT
           echo "failure=$(IFS=';'; echo "${failure[*]}")" >> $GITHUB_OUTPUT
+          
       - name: 配置与编译
         run: |
           mkdir -p "${{ env.BUILD_DIR }}" && cd "${{ env.BUILD_DIR }}"
@@ -76,14 +77,15 @@ jobs:
             -DSCRIPTS=static \
             -DMODULES=static
           make -j$(nproc) && make install
-      - name: 打包指定路径文件
+          
+      - name: 打包文件
         id: package
         run: |
           # 打包该路径下的所有文件（保留目录结构）
           tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
 
-      - name: 创建GitHub Release
+      - name: 创建Release
         id: create_release
         uses: actions/create-release@v1
         env:
@@ -98,7 +100,7 @@ jobs:
             - 成功模块：${{ steps.modules.outputs.success }}
             - 失败模块：${{ steps.modules.outputs.failure || '无' }}
 
-      - name: 上传到Release
+      - name: 上传Release
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.BUILD_AZEROTHCORE }}
