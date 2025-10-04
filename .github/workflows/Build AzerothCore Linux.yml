@@ -84,8 +84,6 @@ jobs:
             -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" \  # 指向BUILD_DIR内的INSTALL_DIR
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \  # 启用ccache加速
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DWITH_WARNINGS=1 \
             -DTOOLS_BUILD=all \
             -DSCRIPTS=static \
