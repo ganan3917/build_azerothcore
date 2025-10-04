@@ -86,7 +86,7 @@ jobs:
       - name: 打包安装目录产物
         id: package
         run: |
-          cd /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/install/
+          cd /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/install
           tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" -C /etc /bin /include /lib *
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
 
