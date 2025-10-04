@@ -36,13 +36,13 @@ jobs:
             libboost-all-dev libcurl4-openssl-dev
           sudo apt clean
 
-      - name: 生成时间戳
+      - name: 生成时间
         id: ts
         run: |
           echo "utc=$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
           echo "sh=$(TZ='Asia/Shanghai' date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
 
-      - name: 克隆核心仓库
+      - name: 克隆仓库
         run: |
           git clone --branch "${{ env.ACORE_BRANCH }}" "${{ env.ACORE_REPO }}" "${{ env.ROOT_DIR }}"
           cd "${{ env.ROOT_DIR }}" && git submodule update --init --recursive
@@ -82,25 +82,17 @@ jobs:
             -DMODULES=static
           make -j$(nproc) && make install
 
-      - name: 打包指定路径文件
+      - name: 打包文件
         id: package
         run: |
-          # 打包该路径下的所有文件（保留目录结构）
           tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
           
-      - name: 保存产物到Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.package.outputs.name }}
-          path: ${{ steps.package.outputs.name }}
-          retention-days: 3
-
       - name: 创建Release
         id: create_release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.BUILD_AZEROTHCORE }}
         with:
           tag_name: build-${{ steps.ts.outputs.utc }}
           release_name: 构建版本 ${{ steps.ts.outputs.sh }}（UTC ${{ steps.ts.outputs.utc }}）
@@ -112,7 +104,7 @@ jobs:
             - 失败模块：${{ steps.modules.outputs.failure || '无' }}
             - 产物大小：${{ steps.package.outputs.size }}
 
-      - name: 上传Release资产
+      - name: 上传Release
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.BUILD_AZEROTHCORE }}
