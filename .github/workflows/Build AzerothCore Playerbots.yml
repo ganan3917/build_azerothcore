@@ -1,4 +1,4 @@
-name: Build AzerothCore Playerbots modules
+name: Build AzerothCore Playerbots
 
 on:
   workflow_dispatch:
@@ -97,7 +97,7 @@ jobs:
           tag_name: build-${{ steps.ts.outputs.utc }}
           release_name: Build AzerothCore modules for linux ${{ steps.ts.outputs.sh }}（UTC ${{ steps.ts.outputs.utc }}）
           body: |
-            ### auto build AzerothCore modules
+            ### auto Build AzerothCore Playerbots
             - 构建时间：UTC ${{ steps.ts.outputs.utc }}
             - 核心分支：${{ env.ACORE_BRANCH }}
             - 成功模块：${{ steps.modules.outputs.success }}
