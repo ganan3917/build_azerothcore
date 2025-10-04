@@ -147,7 +147,7 @@ jobs:
         shell: bash
 
       - name: 📤 上传编译产物
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: azerothcore-build-${{ env.ARCHITECTURE }}-${{ github.event.inputs.build_type || 'Release' }}
           path: ${{ github.workspace }}/azerothcore-*.tar.gz
