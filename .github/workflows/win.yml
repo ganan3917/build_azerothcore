@@ -1,0 +1,114 @@
+name: 自定义编译AzerothCore (Windows)
+
+# 环境变量：可在此处修改仓库、分支、模块等配置
+env:
+  # 目标仓库地址（默认官方仓库，可替换为自己的fork）
+  REPO_URL: "https://github.com/azerothcore/azerothcore-wotlk.git"
+  # 目标分支（如main、dev等）
+  BRANCH: "main"
+  # 需要启用的模块（多个用逗号分隔，如"modules/mod-ah-bot,modules/mod-cfbg"）
+  MODULES: "modules/mod-ah-bot,modules/mod-transmog"
+  # 编译输出目录
+  INSTALL_DIR: "./install"
+
+
+# 触发条件：手动触发 + 推送到指定分支 + 北京时间凌晨3点自动运行
+on:
+  # 自动触发：推送到env中指定的分支
+  push:
+    branches: [ ${{ env.BRANCH }} ]
+  # 手动触发：在GitHub页面点击"Run workflow"
+  workflow_dispatch:
+  # 定时触发：北京时间每天凌晨3点（UTC时间19:00，因为UTC+8=北京时间）
+  schedule:
+    - cron: "0 19 * * *"  # cron格式：分 时 日 月 周（UTC时间）
+
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh  # 使用PowerShell处理变量和路径
+
+    steps:
+      # 1. 拉取指定仓库和分支的代码
+      - name: 拉取源码（指定仓库和分支）
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.repository.full_name }}  # 默认为当前仓库，可改为env.REPO_URL对应的仓库名（格式：owner/repo）
+          ref: ${{ env.BRANCH }}  # 拉取指定分支
+          submodules: false  # 先不自动拉取所有子模块，后续手动处理指定模块
+          fetch-depth: 0
+
+      # 2. 初始化并更新核心子模块（dep依赖）和指定模块
+      - name: 拉取核心依赖和指定模块
+        run: |
+          # 拉取核心子模块（如dep目录，AzerothCore必须依赖）
+          git submodule update --init --recursive dep/
+
+          # 拉取env中指定的自定义模块（多个用逗号分割）
+          $modules = $env:MODULES -split ',' | Where-Object { $_ -ne '' }
+          if ($modules.Count -gt 0) {
+            foreach ($module in $modules) {
+              Write-Host "拉取模块：$module"
+              git submodule update --init --recursive $module
+            }
+          }
+
+      # 3. 安装编译依赖（MySQL/OpenSSL等）
+      - name: 安装依赖
+        run: |
+          choco install -y cmake mysql connector-cpp openssl zlib
+          # 配置依赖库路径到环境变量
+          echo "C:\Program Files\MySQL\MySQL Connector C++ 8.0\lib64" >> $env:GITHUB_PATH
+          echo "C:\Program Files\OpenSSL-Win64\lib" >> $env:GITHUB_PATH
+
+      # 4. 配置VS2022 x64编译环境
+      - name: 初始化VS2022环境
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # 5. 生成VS2022解决方案
+      - name: 生成解决方案
+        run: |
+          mkdir build
+          cd build
+          cmake .. `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
+            -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DAC_USE_STD_MALLOC=ON `
+            -DENABLE_MYSQL_SSL=ON `
+            -DTOOLS_BUILD=ON `
+            -DSCRIPTS=static
+
+      # 6. 使用MSBuild编译解决方案（模拟VS2022手动编译）
+      - name: 编译项目
+        run: |
+          $slnPath = ".\build\AzerothCore.sln"
+          msbuild $slnPath `
+            /p:Configuration=Release `
+            /p:Platform=x64 `
+            /m  # 并行编译
+
+      # 7. 安装编译结果到指定目录
+      - name: 安装输出文件
+        run: |
+          cd build
+          cmake --install . --config Release
+
+      # 8. 打包编译产物
+      - name: 压缩结果
+        run: |
+          7z a -tzip azerothcore-${{ env.BRANCH }}-win64.zip ${{ env.INSTALL_DIR }}\*
+
+      # 9. 上传产物（含分支名标识，便于区分）
+      - name: 上传编译结果
+        uses: actions/upload-artifact@v4
+        with:
+          name: azerothcore-${{ env.BRANCH }}-exe
+          path: azerothcore-${{ env.BRANCH }}-win64.zip
+          retention-days: 14  # 产物保留14天
