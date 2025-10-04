@@ -9,13 +9,15 @@ env:
   AZEROTHCORE_REPO: "azerothcore/azerothcore-wotlk"
   AZEROTHCORE_BRANCH: "master"
   MODULES: "azerothcore/mod-ah-bot azerothcore/mod-eluna"
-  SOURCE_DIR: "${{ github.workspace }}/azerothcore"  # 源码根目录（含CMakeLists.txt）
+  SOURCE_DIR: "${{ github.workspace }}/azerothcore"
   BUILD_DIR: "${{ github.workspace }}/build"
   INSTALL_DIR: "${{ github.workspace }}/install"
   SOLUTION_NAME: "AzerothCore.sln"
   VS_VERSION: "Visual Studio 17 2022"
   PLATFORM: "x64"
   CONFIG: "Release"
+  # 修正 Boost 路径（Chocolatey 安装的 boost-msvc-14.3 实际路径）
+  BOOST_ROOT: "C:/ProgramData/chocolatey/lib/boost-msvc-14.3/tools/boost_1_79_0"
 
 jobs:
   build:
@@ -26,7 +28,7 @@ jobs:
         with:
           repository: ${{ env.AZEROTHCORE_REPO }}
           ref: ${{ env.AZEROTHCORE_BRANCH }}
-          path: ${{ env.SOURCE_DIR }}  # 确保源码拉到SOURCE_DIR指定的目录
+          path: ${{ env.SOURCE_DIR }}
           submodules: recursive
           fetch-depth: 0
 
@@ -48,9 +50,10 @@ jobs:
           [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
           iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
           
+          # 安装依赖（版本与AzerothCore兼容）
           choco install -y mysql --version=8.0.31
           choco install -y openssl --version=1.1.1q
-          choco install -y boost-msvc-14.3 --version=1.79.0
+          choco install -y boost-msvc-14.3 --version=1.79.0  # 对应VS2022的Boost版本
           choco install -y git
         shell: pwsh
 
@@ -60,13 +63,20 @@ jobs:
           New-Item -ItemType Directory -Path ${{ env.INSTALL_DIR }} -Force | Out-Null
         shell: pwsh
 
-      - name: CMake生成VS2022解决方案（修复参数格式）
+      - name: CMake生成VS2022解决方案（修复Boost查找和政策问题）
         run: |
           cmake `
             -G "${{ env.VS_VERSION }}" `
             -A ${{ env.PLATFORM }} `
             -S "${{ env.SOURCE_DIR }}" `
             -B "${{ env.BUILD_DIR }}" `
+            # 处理CMake政策警告，启用BOOST_ROOT识别
+            -DCMAKE_POLICY_DEFAULT_CMP0144=NEW `  # 启用 BOOST_ROOT 变量
+            -DCMAKE_POLICY_DEFAULT_CMP0167=OLD `  # 保留 FindBoost 模块兼容旧版本
+            # Boost 配置（使用正确路径）
+            -DBOOST_ROOT="${{ env.BOOST_ROOT }}" `
+            -DBoost_INCLUDE_DIR="${{ env.BOOST_ROOT }}/include" `
+            # 其他核心配置
             -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
             -DCMAKE_BUILD_TYPE="${{ env.CONFIG }}" `
             -DBUILD_AZEROTHCORE_TESTS=OFF `
@@ -74,10 +84,8 @@ jobs:
             -DTOOLS=ON `
             -DMYSQL_ADD_INCLUDE_PATH="C:\Program Files\MySQL\MySQL Server 8.0\include" `
             -DMYSQL_LIBRARY="C:\Program Files\MySQL\MySQL Server 8.0\lib\libmysql.lib" `
-            -DOPENSSL_ROOT_DIR="C:\Program Files\OpenSSL-Win64" `
-            -DBOOST_ROOT="C:\local\boost_1_79_0"
+            -DOPENSSL_ROOT_DIR="C:\Program Files\OpenSSL-Win64"
         shell: pwsh
-        # 关键修复：确保每行末尾的反引号（`）后没有空格，否则PowerShell会解析失败
 
       - name: 使用VS2022构建解决方案
         run: |
