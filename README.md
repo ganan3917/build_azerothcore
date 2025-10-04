@@ -5,3 +5,13 @@
 支持系统Linux：x86-64   
 
 azetothcore通用地图数据：[data](https://github.com/ganan3917/azerothcore-data.git)
+
+---
+
+Compile AzerothCore-WoTLK at 3:00 AM every day, including two versions: one with modules and one without modules.
+
+The version with modules includes the compilation of Playerbot (a player robot module), while the version without modules only compiles AzerothCore-WoTLK (Azeroth Core).
+
+Supported Systems：Linux x86-64   
+
+AzerothCore General Map Data: [data](https://github.com/ganan3917/azerothcore-data.git)
