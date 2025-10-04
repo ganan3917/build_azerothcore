@@ -3,17 +3,17 @@ name: Build AzerothCore Playerbots
 on:
   workflow_dispatch:
   schedule:
-    - cron: 0 19 * * *  # 每天UTC 19点运行
+    - cron: 0 19 * * *
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     env:
       # 路径配置（调整INSTALL_DIR到BUILD_DIR内部）
-      ROOT_DIR: ./azerothcore          # 克隆根目录
-      BUILD_DIR: ./azerothcore/build   # 编译目录
-      INSTALL_DIR: ./azerothcore/build/install # 安装目录（现在位于BUILD_DIR内部）
-      MODULES_DIR: ./azerothcore/modules # 模块目录
+      ROOT_DIR: ./azerothcore
+      BUILD_DIR: ./azerothcore/build
+      INSTALL_DIR: ./azerothcore/build/install
+      MODULES_DIR: ./azerothcore/modules
       # 核心配置
       ACORE_REPO: "https://github.com/liyunfan1223/azerothcore-wotlk.git"
       ACORE_BRANCH: "Playerbot"
