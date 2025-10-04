@@ -26,14 +26,6 @@ jobs:
         https://github.com/azerothcore/mod-auto-revive.git master
 
     steps:
-      - name: 检查架构（仅x86_64）
-        run: |
-          if [ "$(uname -m)" != "x86_64" ]; then
-            echo "❌ 仅支持x86_64架构"
-            exit 1
-          fi
-          echo "✅ 确认架构：x86_64"
-
       - name: 安装依赖
         run: |
           sudo apt update -y
@@ -42,7 +34,7 @@ jobs:
             libmysqlclient-dev libssl-dev \
             libbz2-dev libreadline-dev libncurses-dev \
             libboost-all-dev libcurl4-openssl-dev
-          sudo apt clean  # 清理缓存减少磁盘占用
+          sudo apt clean
 
       - name: 生成时间戳
         id: ts
@@ -94,7 +86,7 @@ jobs:
         id: package
         run: |
           # 打包该路径下的所有文件（保留目录结构）
-          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" -C ./home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/ .
+          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/ .
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
           
       - name: 保存产物到Artifact
