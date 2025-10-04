@@ -1,4 +1,4 @@
-name: Build AzerothCore
+name: Build AzerothCore Linux
 
 on:
   workflow_dispatch:
@@ -9,10 +9,10 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     env:
-      # 路径配置（使用相对路径更可靠）
-      ROOT_DIR: ./azerothcore          # 克隆根目录（相对工作目录）
+      # 路径配置（调整INSTALL_DIR到BUILD_DIR内部）
+      ROOT_DIR: ./azerothcore          # 克隆根目录
       BUILD_DIR: ./azerothcore/build   # 编译目录
-      INSTALL_DIR: ./azerothcore/install # 安装目录
+      INSTALL_DIR: ./azerothcore/build/install # 安装目录（现在位于BUILD_DIR内部）
       MODULES_DIR: ./azerothcore/modules # 模块目录
       # 核心配置
       ACORE_REPO: "https://github.com/liyunfan1223/azerothcore-wotlk.git"
@@ -38,11 +38,21 @@ jobs:
         run: |
           sudo apt update -y
           sudo apt install -y \
-            git cmake make clang \
+            git cmake make clang ccache \  # 新增ccache加速编译
             libmysqlclient-dev libssl-dev \
             libbz2-dev libreadline-dev libncurses-dev \
             libboost-all-dev libcurl4-openssl-dev
           sudo apt clean  # 清理缓存减少磁盘占用
+
+      - name: 缓存编译文件
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.ccache
+            ${{ env.BUILD_DIR }}
+          key: ${{ runner.os }}-acore-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-acore-
 
       - name: 生成时间戳
         id: ts
@@ -52,8 +62,8 @@ jobs:
 
       - name: 克隆核心仓库
         run: |
-          git clone --depth 1 --branch "${{ env.ACORE_BRANCH }}" "${{ env.ACORE_REPO }}" "${{ env.ROOT_DIR }}"
-          cd "${{ env.ROOT_DIR }}" && git submodule update --init --recursive
+          git clone --branch "${{ env.ACORE_BRANCH }}" "${{ env.ACORE_REPO }}" "${{ env.ROOT_DIR }}"
+          cd "${{ env.ROOT_DIR }}" && git submodule update --init --recursive --shallow-submodules
 
       - name: 拉取模块
         id: modules
@@ -81,21 +91,33 @@ jobs:
           mkdir -p "${{ env.BUILD_DIR }}" && cd "${{ env.BUILD_DIR }}"
           cmake ../ \
             -DCMAKE_BUILD_TYPE="${{ env.BUILD_TYPE }}" \
-            -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" \
+            -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" \  # 指向BUILD_DIR内的INSTALL_DIR
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \  # 启用ccache加速
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DWITH_WARNINGS=1 \
             -DTOOLS_BUILD=all \
             -DSCRIPTS=static \
             -DMODULES=static
-          make -j$(nproc) && make install
+          make -j$(nproc) && make install  # 安装到BUILD_DIR内的INSTALL_DIR
 
-      - name: 打包安装目录产物
+      - name: 验证安装产物（BUILD_DIR内的INSTALL_DIR）
+        run: |
+          # 检查BUILD_DIR下的INSTALL_DIR中是否存在核心二进制文件
+          if [ ! -f "${{ env.INSTALL_DIR }}/bin/authserver" ] || [ ! -f "${{ env.INSTALL_DIR }}/bin/worldserver" ]; then
+            echo "❌ 核心二进制文件缺失，路径：${{ env.INSTALL_DIR }}/bin"
+            exit 1
+          fi
+          echo "✅ 安装产物验证通过"
+
+      - name: 打包BUILD_DIR中的INSTALL_DIR文件夹
         id: package
         run: |
-          # 修正打包路径（使用环境变量定义的安装目录）
+          # 进入BUILD_DIR，压缩内部的INSTALL_DIR（即${{ env.INSTALL_DIR }}）
           cd "${{ env.BUILD_DIR }}"
-          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./*
+          # 打包install目录（此时INSTALL_DIR就是当前目录下的install）
+          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./install
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
           # 复制到工作目录方便上传
           cp "acore-${{ steps.ts.outputs.utc }}.tar.gz" ../../
@@ -106,3 +128,10 @@ jobs:
           name: ${{ steps.package.outputs.name }}
           path: ${{ steps.package.outputs.name }}
           retention-days: 3  # 保留3天
+
+      - name: 上传构建日志（失败时）
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: ${{ env.BUILD_DIR }}/*.log
