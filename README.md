@@ -1,4 +1,4 @@
-[![Build AzerothCore Playerbots](https://github.com/ganan3917/build_azerothcore/actions/workflows/Build%20AzerothCore%20Playerbots.yml/badge.svg?branch=main&event=release)](https://github.com/ganan3917/build_azerothcore/actions/workflows/Build%20AzerothCore%20Playerbots.yml)  　　　[![Build AzerothCore modules](https://github.com/ganan3917/build_azerothcore/actions/workflows/Build%20AzerothCore%20modules.yml/badge.svg?branch=main&event=release)](https://github.com/ganan3917/build_azerothcore/actions/workflows/Build%20AzerothCore%20modules.yml)
+[![Build AzerothCore Playerbots](https://github.com/ganan3917/build_azerothcore/actions/workflows/Build%20AzerothCore%20Playerbots.yml/badge.svg)](https://github.com/ganan3917/build_azerothcore/actions/workflows/Build%20AzerothCore%20Playerbots.yml)
 
 本仓库每天凌晨3点自动编译AzerothCore-WoTLK，分为两个分支，其一带玩家机器人，而模块是则相同：
 
