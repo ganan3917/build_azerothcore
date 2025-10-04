@@ -53,7 +53,7 @@ jobs:
       - name: 克隆核心仓库
         run: |
           git clone --branch "${{ env.ACORE_BRANCH }}" "${{ env.ACORE_REPO }}" "${{ env.ROOT_DIR }}"
-          cd "${{ env.ROOT_DIR }}" && git submodule update --init --recursive --shallow-submodules
+          cd "${{ env.ROOT_DIR }}" && git submodule update --init --recursive
 
       - name: 拉取模块
         id: modules
