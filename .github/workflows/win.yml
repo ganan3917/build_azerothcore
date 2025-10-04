@@ -29,7 +29,7 @@ jobs:
       - name: 方式1：从 Boost 官方源下载（稳定）
         uses: carlosperate/download-file-action@v2  # 可靠的文件下载 Action
         with:
-          file-url: "https://boostorg.jfrog.io/artifactory/main/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe"
+          file-url: "https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe"
           file-name: "boost_installer.exe"  # 重命名为简短名称，方便后续调用
           location: "./"  # 下载到工作目录根路径
 
