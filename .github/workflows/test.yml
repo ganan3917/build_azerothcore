@@ -1,5 +1,4 @@
-name: Build AzerothCore Linux
-
+name: Build AzerothCore test
 on:
   workflow_dispatch:
   schedule:
