@@ -19,4 +19,6 @@ This repository automatically compiles AzerothCore-WoTLK at 3:00 AM every day, w
 
 Supported Systems：Linux x86-64   
 
+download: [Releases](https://github.com/ganan3917/build_azerothcore/releases)
+
 AzerothCore-WoTLK General Map Data: [data](https://github.com/ganan3917/azerothcore-data.git)
