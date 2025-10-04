@@ -1,6 +1,6 @@
-本仓库每天凌晨3点自动编译AzerothCore-WoTLK，分为两个分支，其中带玩家机器人，而模块是一样的：
-- Playerbot[玩家机器人](https://github.com/liyunfan1223/mod-playerbots.git)
-- azerothcore-wotlk[艾泽拉斯核心](https://github.com/azerothcore/azerothcore-wotlk.git)
+本仓库每天凌晨3点自动编译AzerothCore-WoTLK，分为两个分支，其一带玩家机器人，而模块是则相同：
+- Playerbot [玩家机器人](https://github.com/liyunfan1223/mod-playerbots.git)
+- azerothcore-wotlk [艾泽拉斯核心](https://github.com/azerothcore/azerothcore-wotlk.git)
 
 支持系统：Linux x86-64   
 
