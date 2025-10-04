@@ -145,8 +145,8 @@ jobs:
       - name: 上传编译结果及日志（失败时可下载日志排查）
         uses: actions/upload-artifact@v4
         with:
-          name: azerothcore-${{ env.BRANCH }}-exe
+          name: azerothcore-win64
           path:
             - azerothcore-win64.zip
-            - ./build/msbuild.log  # 上传编译日志，便于排查后续问题
+            - ./build/msbuild.log
           retention-days: 14
