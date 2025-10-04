@@ -12,7 +12,7 @@ jobs:
       - name: 从国内镜像下载 Boost 安装包
         uses: carlosperate/download-file-action@v2
         with:
-          file-url: "https://mirrors.aliyun.com/boost/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe"
+          file-url: "https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe"
           file-name: "boost_installer.exe"
           location: "./"
 
