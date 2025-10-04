@@ -28,7 +28,7 @@ env:
 
 jobs:
   compile-azerothcore:
-    name: 🚀 编译 AzerothCore (${{ env.ARCHITECTURE }})
+    name: 🚀 编译 AzerothCore
     runs-on: ubuntu-22.04
     steps:
       - name: 📋 检查系统信息
