@@ -89,8 +89,8 @@ jobs:
             -DSCRIPTS=static \
             -DMODULES=static
           make -j$(nproc) && make install
-          
- - name: 打包指定路径文件
+
+      - name: 打包指定路径文件
         id: package
         run: |
           TARGET_PATH="/home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/"
