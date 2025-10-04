@@ -1,60 +1,50 @@
-name: 编译AzerothCore（修复依赖）(Windows)
+name: 编译AzerothCore（Windows-修复语法错误）
 
-# 环境变量：简化配置，聚焦核心依赖路径
 env:
   REPO_URL: "https://github.com/azerothcore/azerothcore-wotlk.git"
   BRANCH: "main"
   INSTALL_DIR: "./install"
-  # 明确MySQL Connector/C++路径（避免自动识别失败）
   MYSQL_INCLUDE: "C:/Program Files/MySQL/MySQL Connector C++ 8.0/include"
   MYSQL_LIB: "C:/Program Files/MySQL/MySQL Connector C++ 8.0/lib64/vs14/libmysql.lib"
   OPENSSL_DIR: "C:/Program Files/OpenSSL-Win64"
 
-# 触发条件不变
 on:
+  push:
+    branches: [ ${{ env.BRANCH }} ]
   workflow_dispatch:
   schedule:
-    - cron: "0 19 * * *"  # 北京时间凌晨3点（UTC+19:00）
-
+    - cron: "0 19 * * *"
 
 jobs:
   build:
     runs-on: windows-latest
     defaults:
       run:
-        shell: pwsh  # 统一使用PowerShell，避免CMD/PowerShell兼容问题
-        working-directory: ${{ github.workspace }}  # 固定工作目录
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
 
     steps:
-      # 1. 拉取源码（简化配置，确保子模块完整）
       - name: 拉取源码及核心子模块
         uses: actions/checkout@v4
         with:
           repository: ${{ github.event.repository.full_name }}
           ref: ${{ env.BRANCH }}
-          submodules: recursive  # 直接拉取所有核心子模块（无需手动分步）
+          submodules: recursive
           fetch-depth: 0
-          clean: true  # 清理残留文件，避免历史缓存干扰
+          clean: true
 
-      # 2. 修复依赖安装：关键修改点
-      - name: 安装编译依赖（修正MySQL包名+减少冗余）
+      - name: 安装编译依赖（修正MySQL包名）
         run: |
-          # 1. 卸载可能残留的旧MySQL服务（避免端口/服务冲突）
           if (Get-Service -Name "MySQL" -ErrorAction SilentlyContinue) {
             Stop-Service -Name "MySQL" -Force
             sc delete MySQL | Out-Null
           }
-
-          # 2. 用正确的包名安装MySQL Connector/C++（仅需开发库，无需完整服务器）
-          # 包名修正：connector-cpp → mysql-connector-cpp，指定版本避免兼容性问题
           choco install -y `
             cmake `
-            mysql-connector-cpp --version 8.0.36 `  # 明确版本，与AzerothCore兼容
-            openssl --version 1.1.1w `              # 固定OpenSSL版本（避免3.x兼容性问题）
+            mysql-connector-cpp --version 8.0.36 `
+            openssl --version 1.1.1w `
             zlib `
-            --no-progress  # 关闭Chocolatey进度条，减少CLIXML冗余输出（解决日志解析错误）
-
-          # 3. 验证依赖是否安装成功（避免后续步骤盲目执行）
+            --no-progress
           if (-not (Test-Path "${{ env.MYSQL_INCLUDE }}")) {
             Write-Error "MySQL头文件路径不存在：${{ env.MYSQL_INCLUDE }}"
             exit 1
@@ -64,20 +54,16 @@ jobs:
             exit 1
           }
 
-      # 3. 配置VS2022环境（确保MSBuild/编译器路径正确）
       - name: 初始化VS2022 x64编译环境
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
-          toolset: 143  # 明确VS2022工具集版本（避免自动匹配错误）
+          toolset: 143
 
-      # 4. CMake配置：明确指定依赖路径（核心修复点）
       - name: 生成VS2022解决方案（指定依赖路径）
         run: |
-          mkdir -Force build | Out-Null  # 确保build目录存在
+          mkdir -Force build | Out-Null
           cd build
-
-          # 关键：通过-D参数手动指定MySQL/OpenSSL路径，避免自动识别失败
           cmake .. `
             -G "Visual Studio 17 2022" `
             -A x64 `
@@ -87,34 +73,26 @@ jobs:
             -DENABLE_MYSQL_SSL=ON `
             -DTOOLS_BUILD=ON `
             -DSCRIPTS=static `
-            # 手动指定MySQL依赖（解决找不到libmysql的问题）
             -DMYSQL_INCLUDE_DIR="${{ env.MYSQL_INCLUDE }}" `
             -DMYSQL_LIBRARY="${{ env.MYSQL_LIB }}" `
-            # 手动指定OpenSSL依赖
             -DOPENSSL_ROOT_DIR="${{ env.OPENSSL_DIR }}" `
             -DOPENSSL_INCLUDE_DIR="${{ env.OPENSSL_DIR }}/include" `
             -DOPENSSL_LIBRARIES="${{ env.OPENSSL_DIR }}/lib/libssl.lib;${{ env.OPENSSL_DIR }}/lib/libcrypto.lib"
-
-          # 验证CMake是否成功生成解决方案
           if (-not (Test-Path "AzerothCore.sln")) {
             Write-Error "CMake生成解决方案失败，未找到AzerothCore.sln"
             exit 1
           }
 
-      # 5. 编译解决方案（保留MSBuild逻辑，增加错误捕获）
       - name: 用MSBuild编译项目
         run: |
           $slnPath = "./build/AzerothCore.sln"
-          # 增加/nologo减少日志冗余，/fl输出编译日志便于调试
           msbuild $slnPath `
             /p:Configuration=Release `
             /p:Platform=x64 `
-            /p:VisualStudioVersion=17.0 `  # 明确VS版本，避免工具集不匹配
-            /m `  # 并行编译
+            /p:VisualStudioVersion=17.0 `
+            /m `
             /nologo `
-            /fl:msbuild.log  # 输出编译日志到文件（失败时可上传日志排查）
-
-          # 验证编译是否成功（检查核心exe是否生成）
+            /fl:msbuild.log
           if (-not (Test-Path "./build/bin/Release/authserver.exe")) {
             Write-Error "authserver.exe编译失败，未找到文件"
             exit 1
@@ -124,7 +102,6 @@ jobs:
             exit 1
           }
 
-      # 6. 安装+打包+上传（保留原逻辑，增加验证）
       - name: 安装编译结果
         run: |
           cd build
@@ -142,11 +119,10 @@ jobs:
             exit 1
           }
 
-      - name: 上传编译结果及日志（失败时可下载日志排查）
+      - name: 上传编译结果及日志
         uses: actions/upload-artifact@v4
         with:
-          name: azerothcore-win64
-          path:
-            - azerothcore-win64.zip
-            - ./build/msbuild.log
+          name: azerothcore-${{ env.BRANCH }}-exe
+          # 关键修复：将序列格式改为逗号分隔的单个字符串，避免YAML序列解析错误
+          path: azerothcore-${{ env.BRANCH }}-win64.zip, ./build/msbuild.log
           retention-days: 14
