@@ -93,9 +93,8 @@ jobs:
       - name: 打包指定路径文件
         id: package
         run: |
-          cd /azerothcore
           # 打包该路径下的所有文件（保留目录结构）
-          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" -C "$TARGET_PATH" *
+          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" -C ./home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/ .
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
           
       - name: 保存产物到Artifact
