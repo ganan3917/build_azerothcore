@@ -1,4 +1,4 @@
-name: Build AzerothCore Linux
+name: Build AzerothCore modules for linux
 
 on:
   workflow_dispatch:
