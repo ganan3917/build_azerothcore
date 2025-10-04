@@ -94,11 +94,30 @@ jobs:
         with:
           name: ${{ steps.package.outputs.name }}
           path: ${{ steps.package.outputs.name }}
-          retention-days: 3  # 保留3天
+          retention-days: 3
 
-      - name: 上传构建日志（失败时）
-        if: failure()
-        uses: actions/upload-artifact@v4
+      - name: 创建Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: build-logs
-          path: ${{ env.BUILD_DIR }}/*.log
+          tag_name: build-${{ steps.ts.outputs.utc }}
+          release_name: 构建版本 ${{ steps.ts.outputs.sh }}（UTC ${{ steps.ts.outputs.utc }}）
+          body: |
+            ### 自动构建信息
+            - 构建时间：UTC ${{ steps.ts.outputs.utc }}（北京时间 ${{ steps.ts.outputs.sh }}）
+            - 核心分支：${{ env.ACORE_BRANCH }}
+            - 成功模块：${{ steps.modules.outputs.success }}
+            - 失败模块：${{ steps.modules.outputs.failure || '无' }}
+            - 产物大小：${{ steps.package.outputs.size }}
+
+      - name: 上传Release资产
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.BUILD_AZEROTHCORE }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./${{ steps.package.outputs.name }}
+          asset_name: ${{ steps.package.outputs.name }}
+          asset_content_type: application/gzip
