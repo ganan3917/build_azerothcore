@@ -2,7 +2,9 @@
 - Playerbot [玩家机器人](https://github.com/liyunfan1223/mod-playerbots.git)
 - azerothcore-wotlk [艾泽拉斯核心](https://github.com/azerothcore/azerothcore-wotlk.git)
 
-支持系统：Linux x86-64   
+支持系统：Linux x86-
+
+下载:[Releases](https://github.com/ganan3917/build_azerothcore/releases)
 
 AzerothCore-WoTLK通用地图数据：[data](https://github.com/ganan3917/azerothcore-data.git)
 
