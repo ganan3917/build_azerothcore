@@ -81,7 +81,7 @@ jobs:
         id: create_release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.BUILD_AZEROTHCORE }}
         with:
           tag_name: "build-${{ steps.ts.outputs.date }}-${{ steps.ts.outputs.utc }}"
           release_name: "AzerothCore 自动构建 ${{ steps.ts.outputs.sh }}"
