@@ -11,11 +11,11 @@ env:
   AC_MODULES: "https://github.com/azerothcore/mod-ah-bot.git https://github.com/azerothcore/mod-transmog.git"
   BUILD_DIR: "${{ github.workspace }}/build"
   INSTALL_DIR: "${{ github.workspace }}/install"
-  BOOST_ROOT: "${{ github.workspace }}/boost"
-  BOOST_VERSION: "1.81.0"
-  BOOST_ARCHIVE: "boost_1_81_0.zip"
-  # 注意：这里直接写死版本号，避免在env中引用其他env变量
-  BOOST_URL: "https://boostorg.jfrog.io/artifactory/main/release/1.81.0/source/boost_1_81_0.zip"
+  # Boost配置（使用msvc预编译版）
+  BOOST_VERSION: "1_89_0"
+  BOOST_INSTALLER: "boost_${{ env.BOOST_VERSION }}-msvc-14.3-64.exe"
+  BOOST_URL: "https://boostorg.jfrog.io/artifactory/main/release/1.89.0/binaries/${{ env.BOOST_INSTALLER }}"
+  BOOST_INSTALL_DIR: "${{ github.workspace }}/boost"  # 安装目录
 
 jobs:
   build:
@@ -41,29 +41,35 @@ jobs:
           echo "$vsPath\MSBuild\Current\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           echo "$vsPath\VC\Tools\MSVC\14.34.31933\bin\Hostx64\x64" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           
-          # 配置MySQL环境变量（windows-2022镜像默认安装路径）
+          # 配置MySQL环境变量
           $mysqlPath = "C:\Program Files\MySQL\MySQL Server 8.0\bin"
           if (Test-Path $mysqlPath) {
             echo "$mysqlPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           }
         shell: pwsh
       
-      - name: 下载并安装Boost
+      - name: 下载并静默安装Boost
         run: |
-          # 下载Boost
-          Invoke-WebRequest -Uri "${{ env.BOOST_URL }}" -OutFile "${{ env.BOOST_ARCHIVE }}"
+          # 下载Boost安装器
+          Invoke-WebRequest -Uri "${{ env.BOOST_URL }}" -OutFile "${{ env.BOOST_INSTALLER }}"
           
-          # 解压Boost
-          Expand-Archive -Path "${{ env.BOOST_ARCHIVE }}" -DestinationPath "${{ github.workspace }}"
-          Rename-Item -Path "boost_1_81_0" -NewName "boost"
+          # 确保安装目录存在
+          New-Item -ItemType Directory -Path "${{ env.BOOST_INSTALL_DIR }}" -Force | Out-Null
           
-          # 验证Boost安装
-          if (Test-Path "${{ env.BOOST_ROOT }}/boost") {
+          # 静默安装（/S 表示静默，/DIR 指定安装目录）
+          .\${{ env.BOOST_INSTALLER }} /S /DIR="${{ env.BOOST_INSTALL_DIR }}"
+          
+          # 验证安装
+          if (Test-Path "${{ env.BOOST_INSTALL_DIR }}/boost") {
             echo "Boost安装成功"
           } else {
             echo "Boost安装失败"
             exit 1
           }
+          
+          # 转换路径为/分隔（设置BOOST_ROOT环境变量）
+          $boostRoot = "${{ env.BOOST_INSTALL_DIR }}".Replace('\', '/')
+          echo "BOOST_ROOT=$boostRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         shell: pwsh
       
       - name: 克隆AzerothCore源码
@@ -89,6 +95,7 @@ jobs:
       - name: 运行CMake生成解决方案
         run: |
           cd ${{ env.BUILD_DIR }}
+          # 使用转换后的BOOST_ROOT（/分隔路径）
           cmake -G "Visual Studio 17 2022" -A x64 `
             -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
             -DBOOST_ROOT="${{ env.BOOST_ROOT }}" `
