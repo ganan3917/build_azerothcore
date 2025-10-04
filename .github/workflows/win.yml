@@ -147,6 +147,6 @@ jobs:
         with:
           name: azerothcore-${{ env.BRANCH }}-exe
           path:
-            - azerothcore-${{ env.BRANCH }}-win64.zip
+            - azerothcore-win64.zip
             - ./build/msbuild.log  # 上传编译日志，便于排查后续问题
           retention-days: 14
