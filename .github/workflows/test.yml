@@ -1,0 +1,86 @@
+name: Build AzerothCore Linux
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 19 * * *  # 每天UTC 19点运行
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      # 路径配置（调整INSTALL_DIR到BUILD_DIR内部）
+      ROOT_DIR: ./azerothcore          # 克隆根目录
+      BUILD_DIR: ./azerothcore/build   # 编译目录
+      INSTALL_DIR: ./azerothcore/build/install # 安装目录（现在位于BUILD_DIR内部）
+      MODULES_DIR: ./azerothcore/modules # 模块目录
+      # 核心配置
+      ACORE_REPO: "https://github.com/azerothcore/azerothcore-wotlk.git"
+      ACORE_BRANCH: "master"
+      BUILD_TYPE: "MinSizeRel"
+      MODULES_INPUT: |
+    steps:
+      - name: 安装依赖
+        run: |
+          sudo apt update -y
+          sudo apt install -y \
+            git cmake make clang \
+            libmysqlclient-dev libssl-dev \
+            libbz2-dev libreadline-dev libncurses-dev \
+            libboost-all-dev libcurl4-openssl-dev
+          sudo apt clean
+      - name: 生成时间戳
+        id: ts
+        run: |
+          echo "utc=$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+          echo "sh=$(TZ='Asia/Shanghai' date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+      - name: 克隆核心仓库
+        run: |
+          git clone --branch "${{ env.ACORE_BRANCH }}" "${{ env.ACORE_REPO }}" "${{ env.ROOT_DIR }}"
+          cd "${{ env.ROOT_DIR }}" && git submodule update --init --recursive
+      - name: 拉取模块
+        id: modules
+        run: |
+          mkdir -p "${{ env.MODULES_DIR }}"
+          success=()
+          failure=()
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            repo=$(echo "$line" | awk '{print $1}')
+            branch=$(echo "$line" | awk '{print $2}')
+            name=$(basename "$repo" .git)
+            if git clone --depth 1 --branch "$branch" "$repo" "${{ env.MODULES_DIR }}/$name"; then
+              success+=("$name（$branch）")
+            else
+              failure+=("$name（$branch）")
+              echo "⚠️ 模块 $name 克隆失败，将继续构建"
+            fi
+          done <<< "${{ env.MODULES_INPUT }}"
+          echo "success=$(IFS=';'; echo "${success[*]}")" >> $GITHUB_OUTPUT
+          echo "failure=$(IFS=';'; echo "${failure[*]}")" >> $GITHUB_OUTPUT
+      - name: 配置与编译
+        run: |
+          mkdir -p "${{ env.BUILD_DIR }}" && cd "${{ env.BUILD_DIR }}"
+          cmake ../ \
+            -DCMAKE_BUILD_TYPE="${{ env.BUILD_TYPE }}" \
+            -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DWITH_WARNINGS=1 \
+            -DTOOLS_BUILD=all \
+            -DSCRIPTS=static \
+            -DMODULES=static
+          make -j$(nproc) && make install
+      - name: 打包指定路径文件
+        id: package
+        run: |
+          # 打包该路径下的所有文件（保留目录结构）
+          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/
+          echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
+          
+      - name: 保存产物到Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: ${{ steps.package.outputs.name }}
+          retention-days: 3  # 保留3天
