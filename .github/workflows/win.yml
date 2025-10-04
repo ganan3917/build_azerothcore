@@ -1,7 +1,7 @@
 name: 编译AzerothCore（Windows-修复语法错误）
 
 env:
-  REPO_URL: "https://github.com/azerothcore/azerothcore-wotlk.git"
+  REPO: "azerothcore/azerothcore-wotlk"  # 修正：使用 {owner}/{repo} 格式
   BRANCH: "main"
   INSTALL_DIR: "./install"
   OPENSSL_DIR: "C:/Program Files/OpenSSL-Win64"
@@ -23,7 +23,7 @@ jobs:
       - name: 拉取源码及核心子模块
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.REPO_URL }}
+          repository: ${{ env.REPO }}  # 使用修正后的 {owner}/{repo} 格式
           ref: ${{ env.BRANCH }}
           submodules: recursive
           fetch-depth: 0
@@ -136,6 +136,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: azerothcore-${{ env.BRANCH }}-exe
-          # 修复：使用逗号分隔的单字符串路径，避免YAML序列解析错误
           path: "azerothcore-${{ env.BRANCH }}-win64.zip, ./build/msbuild.log"
           retention-days: 14
