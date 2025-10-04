@@ -11,9 +11,10 @@ env:
   AC_MODULES: "https://github.com/azerothcore/mod-ah-bot.git https://github.com/azerothcore/mod-transmog.git"
   BUILD_DIR: "${{ github.workspace }}/build"
   INSTALL_DIR: "${{ github.workspace }}/install"
-  # 直接指定Boost安装路径和下载地址（移除版本相关变量）
-  BOOST_INSTALL_DIR: "${{ github.workspace }}/boost"
-  BOOST_URL: "https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe"
+  # Boost源码配置
+  BOOST_URL: "https://archives.boost.io/release/1.89.0/source/boost_1_89_0.tar.gz"
+  BOOST_SOURCE_DIR: "${{ github.workspace }}/boost-src"  # 源码解压目录
+  BOOST_INSTALL_DIR: "${{ github.workspace }}/boost"     # 安装目录
 
 jobs:
   build:
@@ -29,55 +30,87 @@ jobs:
           vswhere -latest -property installationPath
         shell: pwsh
       
-      - name: 配置环境变量
+      - name: 配置环境变量（VS2022和工具链）
         run: |
-          # 查找VS2022安装路径
+          # 获取VS2022安装路径
           $vsPath = vswhere -latest -property installationPath
           echo "VS安装路径: $vsPath"
           
-          # 配置VS环境变量
-          echo "$vsPath\MSBuild\Current\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "$vsPath\VC\Tools\MSVC\14.34.31933\bin\Hostx64\x64" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          # 加载VS环境变量（确保cl.exe、link.exe等编译器可用）
+          & "$vsPath\VC\Auxiliary\Build\vcvars64.bat"
           
-          # 配置MySQL环境变量
+          # 将VS工具链添加到PATH
+          echo "$vsPath\MSBuild\Current\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "$vsPath\VC\Tools\MSVC\14.38.33130\bin\Hostx64\x64" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          
+          # 配置MySQL路径
           $mysqlPath = "C:\Program Files\MySQL\MySQL Server 8.0\bin"
           if (Test-Path $mysqlPath) {
             echo "$mysqlPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           }
         shell: pwsh
       
-      - name: 缓存Boost
+      - name: 缓存Boost源码和编译结果
         uses: actions/cache@v3
         with:
-          path: ${{ env.BOOST_INSTALL_DIR }}
-          key: boost-1.89.0-msvc-14.3-64-windows
+          path: |
+            ${{ env.BOOST_SOURCE_DIR }}
+            ${{ env.BOOST_INSTALL_DIR }}
+          key: boost-1.89.0-src-windows-x64
       
-      - name: 下载并静默安装Boost
+      - name: 下载并解压Boost源码
         run: |
-          # 提取安装器文件名（从URL中获取）
-          $installerName = ${{ env.BOOST_URL }} -split '/' | Select-Object -Last 1
-          
-          # 仅在缓存未命中时下载安装
-          if (-not (Test-Path "${{ env.BOOST_INSTALL_DIR }}/boost")) {
-            # 下载安装器
-            Invoke-WebRequest -Uri "${{ env.BOOST_URL }}" -OutFile $installerName
+          if (-not (Test-Path "${{ env.BOOST_SOURCE_DIR }}")) {
+            # 下载源码包
+            Invoke-WebRequest -Uri "${{ env.BOOST_URL }}" -OutFile "boost.tar.gz"
             
-            # 确保安装目录存在
-            New-Item -ItemType Directory -Path "${{ env.BOOST_INSTALL_DIR }}" -Force | Out-Null
+            # 创建源码目录
+            New-Item -ItemType Directory -Path "${{ env.BOOST_SOURCE_DIR }}" -Force | Out-Null
             
-            # 静默安装（/S 表示静默，/DIR 指定安装目录）
-            .\$installerName /S /DIR="${{ env.BOOST_INSTALL_DIR }}"
+            # 解压（Windows需要7zip支持，GitHub Actions镜像已预装）
+            7z x boost.tar.gz -o"${{ env.BOOST_SOURCE_DIR }}"
+            7z x "${{ env.BOOST_SOURCE_DIR }}\boost_1_89_0.tar" -o"${{ env.BOOST_SOURCE_DIR }}"
             
-            # 验证安装
-            if (-not (Test-Path "${{ env.BOOST_INSTALL_DIR }}/boost")) {
-              echo "Boost安装失败"
-              exit 1
-            }
+            # 移动到源码目录（去除版本号前缀）
+            Move-Item -Path "${{ env.BOOST_SOURCE_DIR }}\boost_1_89_0\*" -Destination "${{ env.BOOST_SOURCE_DIR }}"
           } else {
-            echo "使用缓存的Boost安装"
+            echo "使用缓存的Boost源码"
+          }
+        shell: pwsh
+      
+      - name: 编译并安装Boost
+        run: |
+          # 进入Boost源码目录
+          cd "${{ env.BOOST_SOURCE_DIR }}"
+          
+          # 仅在未安装时执行编译
+          if (-not (Test-Path "${{ env.BOOST_INSTALL_DIR }}\include\boost")) {
+            # 初始化Boost构建系统（生成b2.exe）
+            .\bootstrap.bat msvc
+            
+            # 使用b2编译并安装（针对x64架构，Release模式）
+            .\b2.exe `
+              --build-dir="${{ env.BOOST_SOURCE_DIR }}\build" `
+              --prefix="${{ env.BOOST_INSTALL_DIR }}" `
+              toolset=msvc-14.3 `
+              architecture=x86 `
+              address-model=64 `
+              variant=release `
+              link=static `
+              threading=multi `
+              runtime-link=shared `
+              --with-system `
+              --with-filesystem `
+              --with-thread `
+              --with-date_time `
+              --with-program_options `
+              --with-iostreams `
+              install
+          } else {
+            echo "使用缓存的Boost编译结果"
           }
           
-          # 转换路径为/分隔（设置BOOST_ROOT环境变量）
+          # 转换路径为/分隔，设置BOOST_ROOT环境变量
           $boostRoot = "${{ env.BOOST_INSTALL_DIR }}".Replace('\', '/')
           echo "BOOST_ROOT=$boostRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         shell: pwsh
@@ -90,7 +123,7 @@ jobs:
       - name: 安装模块
         run: |
           cd azerothcore/modules
-          $modules = "${{ env.AC_MODULES }}".split()
+          $modules = "${{ env.AC_MODULES }}".Split()
           foreach ($module in $modules) {
             git clone $module
           }
