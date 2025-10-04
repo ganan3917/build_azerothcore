@@ -1,216 +1,121 @@
-name: Build AzerothCore with VS2022 (Fixed Boost Download)
+name: AzerothCore 编译工作流
 
 on:
+  # 支持手动触发
   workflow_dispatch:
+  # 自动运行：北京时间每天凌晨3点（UTC时间19点）
   schedule:
-    - cron: '0 19 * * *'  # 北京时间每天3点（UTC时间19点）
+    - cron: '0 19 * * *'
 
 env:
-  # 核心配置
-  AZEROTHCORE_REPO: "azerothcore/azerothcore-wotlk"
-  AZEROTHCORE_BRANCH: "master"
-  MODULES: "azerothcore/mod-ah-bot azerothcore/mod-eluna"
-  SOURCE_DIR: "${{ github.workspace }}/azerothcore"
+  # 配置参数
+  AC_REPO: "https://github.com/azerothcore/azerothcore-wotlk.git"
+  AC_BRANCH: "master"
+  AC_MODULES: "https://github.com/azerothcore/mod-ah-bot.git https://github.com/azerothcore/mod-transmog.git"
   BUILD_DIR: "${{ github.workspace }}/build"
   INSTALL_DIR: "${{ github.workspace }}/install"
-  SOLUTION_NAME: "AzerothCore.sln"
-  VS_VERSION: "Visual Studio 17 2022"
-  PLATFORM: "x64"
-  CONFIG: "Release"
-  
-  # Boost 配置
-  BOOST_VERSION: "1.89.0"
-  BOOST_INSTALL_DIR: "C:/local/boost_1_89_0"
-  BOOST_EXE_URL: "https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe"
+  BOOST_ROOT: "${{ github.workspace }}/boost"
+  BOOST_VERSION: "1.81.0"
+  BOOST_ARCHIVE: "boost_1_81_0.zip"
+  BOOST_URL: "https://boostorg.jfrog.io/artifactory/main/release/${{ env.BOOST_VERSION }}/source/${{ env.BOOST_ARCHIVE }}"
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
+    
     steps:
-      # 步骤1：安装Boost 1.89.0（修复下载重试参数错误）
-      - name: 安装Boost 1.89.0 (msvc-14.3)
+      - name: 检查系统环境
         run: |
-          $boostInstallDir = "${{ env.BOOST_INSTALL_DIR }}"
-          $boostExe = "boost-installer.exe"
-          $boostUrl = "${{ env.BOOST_EXE_URL }}"
+          echo "系统信息: $env:OS"
+          git --version
+          cmake --version
+          mysql --version
+          vswhere -latest -property installationPath
           
-          # 检查是否已安装
-          $boostInstalled = $false
-          if (Test-Path $boostInstallDir) {
-            $includePath = Join-Path $boostInstallDir "include\boost"
-            $libFiles = Get-ChildItem -Path (Join-Path $boostInstallDir "lib") -Filter "boost_*.lib" -ErrorAction SilentlyContinue
-            if (Test-Path $includePath -and $libFiles.Count -gt 0) {
-              $boostInstalled = $true
-              Write-Host "已检测到Boost 1.89.0安装在: $boostInstallDir"
-            } else {
-              Write-Host "Boost目录存在但文件不完整，将重新安装"
-              Remove-Item -Path $boostInstallDir -Recurse -Force -ErrorAction SilentlyContinue
-            }
+      - name: 配置环境变量
+        run: |
+          # 查找VS2022安装路径
+          $vsPath = vswhere -latest -property installationPath
+          echo "VS安装路径: $vsPath"
+          
+          # 配置VS环境变量
+          echo "$vsPath\MSBuild\Current\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "$vsPath\VC\Tools\MSVC\14.34.31933\bin\Hostx64\x64" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          
+          # 配置MySQL环境变量
+          $mysqlPath = "C:\Program Files\MySQL\MySQL Server 8.0\bin"
+          if (Test-Path $mysqlPath) {
+            echo "$mysqlPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           }
           
-          # 未安装时执行安装
-          if (-not $boostInstalled) {
-            # 手动实现下载重试（替代-RetryCount和-RetryDelaySec）
-            $maxRetries = 3  # 最大重试次数
-            $retryDelaySec = 5  # 重试间隔（秒）
-            $success = $false
-            
-            for ($i = 1; $i -le $maxRetries; $i++) {
-              try {
-                Write-Host "第 $i 次尝试下载Boost安装包（共 $maxRetries 次）"
-                Invoke-WebRequest -Uri $boostUrl -OutFile $boostExe -UseBasicParsing
-                $success = $true
-                break  # 下载成功则退出循环
-              } catch {
-                Write-Warning "第 $i 次下载失败: $_"
-                if ($i -lt $maxRetries) {
-                  Write-Host "等待 $retryDelaySec 秒后重试..."
-                  Start-Sleep -Seconds $retryDelaySec
-                }
-              }
-            }
-            
-            # 检查下载是否成功
-            if (-not $success -or -not (Test-Path $boostExe)) {
-              Write-Error "经过 $maxRetries 次尝试，仍无法下载Boost安装包"
-              exit 1
-            }
-            
-            # 创建安装目录父目录
-            $parentDir = Split-Path $boostInstallDir -Parent
-            if (-not (Test-Path $parentDir)) {
-              New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
-            }
-            
-            # 静默安装Boost
-            Write-Host "安装Boost到: $boostInstallDir"
-            Start-Process -FilePath $boostExe -ArgumentList "/S --prefix=`"$boostInstallDir`"" -Wait -NoNewWindow -PassThru
-            
-            # 验证安装结果
-            $includePath = Join-Path $boostInstallDir "include\boost"
-            $libFiles = Get-ChildItem -Path (Join-Path $boostInstallDir "lib") -Filter "boost_*.lib" -ErrorAction SilentlyContinue
-            if (-not (Test-Path $includePath) -or $libFiles.Count -eq 0) {
-              Write-Error "Boost安装失败，缺少关键文件（include或lib）"
-              exit 1
-            }
-            Write-Host "Boost 1.89.0安装成功"
-          }
+          # 验证环境变量配置
+          echo "当前PATH: $env:PATH"
+        shell: pwsh
+      
+      - name: 下载并安装Boost
+        run: |
+          # 下载Boost
+          Invoke-WebRequest -Uri ${{ env.BOOST_URL }} -OutFile ${{ env.BOOST_ARCHIVE }}
           
-          # 设置环境变量BOOST_ROOT
-          Write-Host "设置环境变量 BOOST_ROOT = $boostInstallDir"
-          [Environment]::SetEnvironmentVariable("BOOST_ROOT", $boostInstallDir, "Machine")
-          $env:BOOST_ROOT = $boostInstallDir
+          # 解压Boost
+          Expand-Archive -Path ${{ env.BOOST_ARCHIVE }} -DestinationPath ${{ github.workspace }}
+          Rename-Item -Path "boost_1_81_0" -NewName "boost"
           
-          # 添加Boost lib到Path
-          $boostLibDir = Join-Path $boostInstallDir "lib"
-          if (-not ($env:Path -like "*$boostLibDir*")) {
-            $newPath = "$env:Path;$boostLibDir"
-            [Environment]::SetEnvironmentVariable("Path", $newPath, "Machine")
-            $env:Path = $newPath
+          # 验证Boost安装
+          if (Test-Path "${{ env.BOOST_ROOT }}/boost") {
+            echo "Boost安装成功"
+          } else {
+            echo "Boost安装失败"
+            exit 1
           }
         shell: pwsh
-
-      # 步骤2：拉取AzerothCore源码
-      - name: 拉取AzerothCore源码
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.AZEROTHCORE_REPO }}
-          ref: ${{ env.AZEROTHCORE_BRANCH }}
-          path: ${{ env.SOURCE_DIR }}
-          submodules: recursive
-          fetch-depth: 0
-
-      # 步骤3：拉取/更新模块
-      - name: 拉取/更新模块
+      
+      - name: 克隆AzerothCore源码
         run: |
-          $modulesPath = "${{ env.SOURCE_DIR }}\modules"
-          if (-not (Test-Path $modulesPath)) {
-            New-Item -ItemType Directory -Path $modulesPath -Force | Out-Null
-          }
-          
-          foreach ($module in $env:MODULES -split ' ') {
-            $moduleName = $module.Split('/')[-1]
-            $targetPath = Join-Path $modulesPath $moduleName
-            
-            if (-not (Test-Path $targetPath)) {
-              git clone "https://github.com/$module.git" $targetPath
-            } else {
-              Set-Location $targetPath
-              git pull
-              Set-Location ${{ github.workspace }}
-            }
+          git clone --branch ${{ env.AC_BRANCH }} --recursive ${{ env.AC_REPO }} azerothcore
+        shell: cmd
+      
+      - name: 安装模块
+        run: |
+          cd azerothcore/modules
+          $modules = "${{ env.AC_MODULES }}".split()
+          foreach ($module in $modules) {
+            git clone $module
           }
         shell: pwsh
-
-      # 步骤4：创建构建/产物目录
-      - name: 创建构建/产物目录
+      
+      - name: 创建构建目录
         run: |
-          New-Item -ItemType Directory -Path ${{ env.BUILD_DIR }} -Force | Out-Null
-          New-Item -ItemType Directory -Path ${{ env.INSTALL_DIR }} -Force | Out-Null
-        shell: pwsh
-
-      # 步骤5：CMake生成解决方案
-      - name: CMake生成解决方案
+          mkdir ${{ env.BUILD_DIR }}
+          mkdir ${{ env.INSTALL_DIR }}
+        shell: cmd
+      
+      - name: 运行CMake生成解决方案
         run: |
-          cmake `
-            -G "${{ env.VS_VERSION }}" `
-            -A ${{ env.PLATFORM }} `
-            -S "${{ env.SOURCE_DIR }}" `
-            -B "${{ env.BUILD_DIR }}" `
-            -DCMAKE_POLICY_DEFAULT_CMP0144=NEW `
-            -DCMAKE_POLICY_DEFAULT_CMP0167=OLD `
-            -DBOOST_ROOT="${{ env.BOOST_INSTALL_DIR }}" `
-            -DBoost_INCLUDE_DIR="${{ env.BOOST_INSTALL_DIR }}\include" `
-            -DBoost_LIBRARY_DIR="${{ env.BOOST_INSTALL_DIR }}\lib" `
+          cd ${{ env.BUILD_DIR }}
+          cmake -G "Visual Studio 17 2022" -A x64 `
             -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
-            -DCMAKE_BUILD_TYPE="${{ env.CONFIG }}" `
-            -DBUILD_AZEROTHCORE_TESTS=OFF `
+            -DBOOST_ROOT="${{ env.BOOST_ROOT }}" `
+            -DWITH_WARNINGS=ON `
             -DSCRIPTS=static `
-            -DTOOLS=ON
+            -DTOOLS=ON `
+            ${{ github.workspace }}/azerothcore
         shell: pwsh
-
-      # 步骤6：VS2022构建解决方案
-      - name: VS2022构建解决方案
+      
+      - name: 使用VS2022编译
         run: |
-          $solutionPath = Join-Path ${{ env.BUILD_DIR }} ${{ env.SOLUTION_NAME }}
-          if (-not (Test-Path $solutionPath)) {
-            Write-Error "CMake未生成解决方案文件: $solutionPath"
-            exit 1
-          }
-          
-          msbuild `
-            $solutionPath `
-            /p:Configuration=${{ env.CONFIG }} `
-            /p:Platform=${{ env.PLATFORM }} `
-            /t:INSTALL `
-            /m `
-            /verbosity:minimal
-          
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "构建失败，MSBuild返回码: $LASTEXITCODE"
-            exit 1
-          }
-        shell: pwsh
-
-      # 步骤7：打包构建产物
-      - name: 打包构建产物
+          cd ${{ env.BUILD_DIR }}
+          msbuild AzerothCore.sln /p:Configuration=Release /p:Platform=x64 /m
+        shell: cmd
+      
+      - name: 安装编译结果
         run: |
-          if (-not (Test-Path ${{ env.INSTALL_DIR }})) {
-            Write-Error "产物目录不存在: ${{ env.INSTALL_DIR }}"
-            exit 1
-          }
-          
-          $timestamp = Get-Date -Format 'yyyyMMddHHmmss'
-          $zipName = "azerothcore_${{ env.CONFIG }}_boost-${{ env.BOOST_VERSION }}_${timestamp}.zip"
-          Compress-Archive -Path "${{ env.INSTALL_DIR }}\*" -DestinationPath $zipName -Force
-          echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
-        shell: pwsh
-
-      # 步骤8：上传构建产物
-      - name: 上传构建产物
+          cd ${{ env.BUILD_DIR }}
+          msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 /m
+        shell: cmd
+      
+      - name: 上传编译产物
         uses: actions/upload-artifact@v4
         with:
-          name: azerothcore-windows-build
-          path: ${{ env.ZIP_NAME }}
-          retention-days: 14
-          if-no-files-found: error
+          name: azerothcore-build
+          path: ${{ env.INSTALL_DIR }}
