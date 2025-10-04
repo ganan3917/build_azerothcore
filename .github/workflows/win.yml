@@ -4,8 +4,6 @@ env:
   REPO_URL: "https://github.com/azerothcore/azerothcore-wotlk.git"
   BRANCH: "main"
   INSTALL_DIR: "./install"
-  MYSQL_INCLUDE: "C:/Program Files/MySQL/MySQL Connector C++ 8.0/include"
-  MYSQL_LIB: "C:/Program Files/MySQL/MySQL Connector C++ 8.0/lib64/vs14/libmysql.lib"
   OPENSSL_DIR: "C:/Program Files/OpenSSL-Win64"
 
 on:
@@ -25,32 +23,52 @@ jobs:
       - name: 拉取源码及核心子模块
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.repository.full_name }}
+          repository: ${{ env.REPO_URL }}  # 修正：使用预设的仓库URL
           ref: ${{ env.BRANCH }}
           submodules: recursive
           fetch-depth: 0
           clean: true
 
-      - name: 安装编译依赖（修正MySQL包名）
+      - name: 安装编译依赖（修正MySQL连接器类型）
         run: |
+          # 停止并移除可能存在的MySQL服务
           if (Get-Service -Name "MySQL" -ErrorAction SilentlyContinue) {
             Stop-Service -Name "MySQL" -Force
             sc delete MySQL | Out-Null
           }
+          
+          # 安装依赖（关键：使用MySQL C连接器而非C++）
           choco install -y `
             cmake `
-            mysql-connector-cpp --version 8.0.36 `
+            mysql-connector-c --version 8.0.36 `  # 修正：安装C连接器
             openssl --version 1.1.1w `
             zlib `
             --no-progress
-          if (-not (Test-Path "${{ env.MYSQL_INCLUDE }}")) {
-            Write-Error "MySQL头文件路径不存在：${{ env.MYSQL_INCLUDE }}"
+          
+          # 动态查找MySQL C连接器的头文件路径
+          $mysqlInclude = Get-ChildItem -Path "C:\ProgramData\chocolatey\lib\mysql-connector-c" `
+            -Recurse -Filter "include" `
+            | Where-Object { $_.FullName -match "include$" } `
+            | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $mysqlInclude) {
+            Write-Error "未找到MySQL C连接器头文件目录"
             exit 1
           }
-          if (-not (Test-Path "${{ env.MYSQL_LIB }}")) {
-            Write-Error "MySQL库文件不存在：${{ env.MYSQL_LIB }}"
+          echo "MYSQL_INCLUDE=$mysqlInclude" >> $env:GITHUB_ENV
+          
+          # 动态查找MySQL C连接器的库文件
+          $mysqlLib = Get-ChildItem -Path "C:\ProgramData\chocolatey\lib\mysql-connector-c" `
+            -Recurse -Filter "libmysql.lib" `
+            | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $mysqlLib) {
+            Write-Error "未找到libmysql.lib"
             exit 1
           }
+          echo "MYSQL_LIB=$mysqlLib" >> $env:GITHUB_ENV
+          
+          # 验证路径
+          Write-Host "找到MySQL头文件路径: $mysqlInclude"
+          Write-Host "找到MySQL库文件路径: $mysqlLib"
 
       - name: 初始化VS2022 x64编译环境
         uses: ilammy/msvc-dev-cmd@v1
@@ -58,7 +76,7 @@ jobs:
           arch: x64
           toolset: 143
 
-      - name: 生成VS2022解决方案（指定依赖路径）
+      - name: 生成VS2022解决方案（使用动态查找的依赖路径）
         run: |
           mkdir -Force build | Out-Null
           cd build
@@ -121,6 +139,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: azerothcore-${{ env.BRANCH }}-exe
-          # 关键修复：将序列格式改为逗号分隔的单个字符串，避免YAML序列解析错误
-          path: azerothcore-${{ env.BRANCH }}-win64.zip, ./build/msbuild.log
+          path: 
+            - azerothcore-${{ env.BRANCH }}-win64.zip ./build/msbuild.log
           retention-days: 14
