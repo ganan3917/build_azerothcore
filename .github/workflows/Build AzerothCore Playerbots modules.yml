@@ -1,4 +1,4 @@
-name: Build AzerothCore modules for linux
+name: Build AzerothCore Playerbots modules
 
 on:
   workflow_dispatch:
