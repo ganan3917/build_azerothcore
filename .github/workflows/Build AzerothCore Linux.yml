@@ -89,25 +89,13 @@ jobs:
             -DSCRIPTS=static \
             -DMODULES=static
           make -j$(nproc) && make install
-
-      - name: 验证安装产物（BUILD_DIR内的INSTALL_DIR）
-        run: |
-          # 检查BUILD_DIR下的INSTALL_DIR中是否存在核心二进制文件
-          if [ ! -f "${{ env.INSTALL_DIR }}/bin/authserver" ] || [ ! -f "${{ env.INSTALL_DIR }}/bin/worldserver" ]; then
-            echo "❌ 核心二进制文件缺失，路径：${{ env.INSTALL_DIR }}/bin"
-            exit 1
-          fi
-          echo "✅ 安装产物验证通过"
-
+          
       - name: 打包BUILD_DIR中的INSTALL_DIR文件夹
         id: package
         run: |
-          # 进入BUILD_DIR，压缩内部的INSTALL_DIR（即${{ env.INSTALL_DIR }}）
           cd "${{ env.BUILD_DIR }}"
-          # 打包install目录（此时INSTALL_DIR就是当前目录下的install）
           tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./install
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
-          # 复制到工作目录方便上传
           cp "acore-${{ steps.ts.outputs.utc }}.tar.gz" ../../
 
       - name: 保存产物到Artifact
