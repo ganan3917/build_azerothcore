@@ -9,8 +9,6 @@ env:
   OPENSSL_DIR: "C:/Program Files/OpenSSL-Win64"
 
 on:
-  push:
-    branches: [ ${{ env.BRANCH }} ]
   workflow_dispatch:
   schedule:
     - cron: "0 19 * * *"
