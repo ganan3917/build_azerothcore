@@ -76,11 +76,6 @@ jobs:
           # 打包该路径下的所有文件（保留目录结构）
           tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
-          
-      - name: 保存产物到Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.package.outputs.name }}
 
       - name: 创建GitHub Release
         id: create_release
