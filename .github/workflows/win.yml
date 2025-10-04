@@ -1,14 +1,11 @@
 name: AzerothCore 编译工作流
 
 on:
-  # 支持手动触发
   workflow_dispatch:
-  # 自动运行：北京时间每天凌晨3点（UTC时间19点）
   schedule:
-    - cron: '0 19 * * *'
+    - cron: '0 19 * * *'  # 北京时间每天3点（UTC+8）
 
 env:
-  # 配置参数
   AC_REPO: "https://github.com/azerothcore/azerothcore-wotlk.git"
   AC_BRANCH: "master"
   AC_MODULES: "https://github.com/azerothcore/mod-ah-bot.git https://github.com/azerothcore/mod-transmog.git"
@@ -17,7 +14,8 @@ env:
   BOOST_ROOT: "${{ github.workspace }}/boost"
   BOOST_VERSION: "1.81.0"
   BOOST_ARCHIVE: "boost_1_81_0.zip"
-  BOOST_URL: "https://boostorg.jfrog.io/artifactory/main/release/${{ env.BOOST_VERSION }}/source/${{ env.BOOST_ARCHIVE }}"
+  # 注意：这里直接写死版本号，避免在env中引用其他env变量
+  BOOST_URL: "https://boostorg.jfrog.io/artifactory/main/release/1.81.0/source/boost_1_81_0.zip"
 
 jobs:
   build:
@@ -31,7 +29,8 @@ jobs:
           cmake --version
           mysql --version
           vswhere -latest -property installationPath
-          
+        shell: pwsh
+      
       - name: 配置环境变量
         run: |
           # 查找VS2022安装路径
@@ -42,23 +41,20 @@ jobs:
           echo "$vsPath\MSBuild\Current\Bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           echo "$vsPath\VC\Tools\MSVC\14.34.31933\bin\Hostx64\x64" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           
-          # 配置MySQL环境变量
+          # 配置MySQL环境变量（windows-2022镜像默认安装路径）
           $mysqlPath = "C:\Program Files\MySQL\MySQL Server 8.0\bin"
           if (Test-Path $mysqlPath) {
             echo "$mysqlPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           }
-          
-          # 验证环境变量配置
-          echo "当前PATH: $env:PATH"
         shell: pwsh
       
       - name: 下载并安装Boost
         run: |
           # 下载Boost
-          Invoke-WebRequest -Uri ${{ env.BOOST_URL }} -OutFile ${{ env.BOOST_ARCHIVE }}
+          Invoke-WebRequest -Uri "${{ env.BOOST_URL }}" -OutFile "${{ env.BOOST_ARCHIVE }}"
           
           # 解压Boost
-          Expand-Archive -Path ${{ env.BOOST_ARCHIVE }} -DestinationPath ${{ github.workspace }}
+          Expand-Archive -Path "${{ env.BOOST_ARCHIVE }}" -DestinationPath "${{ github.workspace }}"
           Rename-Item -Path "boost_1_81_0" -NewName "boost"
           
           # 验证Boost安装
