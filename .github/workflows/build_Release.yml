@@ -86,6 +86,7 @@ jobs:
       - name: 打包安装目录产物
         id: package
         run: |
+          cd "$BUILD_DIR"
           cd "$INSTALL_DIR"
           tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" -C /etc /bin /include /lib *
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
