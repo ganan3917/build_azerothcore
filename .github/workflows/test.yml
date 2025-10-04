@@ -1,0 +1,154 @@
+name: 🏗️ AzerothCore 编译工作流
+
+on:
+  # 手动触发（保留）
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: '编译类型 (Release/Debug)'
+        required: true
+        default: 'Release'
+        type: choice
+        options:
+          - Release
+          - Debug
+  # 定时触发：北京时间每天凌晨3点（UTC时间19点，UTC+8=北京时间）
+  schedule:
+    - cron: '0 19 * * *'  # cron格式：分 时 日 月 星期（UTC时间）
+
+env:
+  # 核心参数配置（保持不变）
+  AZEROTHCORE_REPO: "https://github.com/azerothcore/azerothcore-wotlk.git"
+  AZEROTHCORE_BRANCH: "master"
+  MODULES: "https://github.com/azerothcore/mod-ah-bot.git,https://github.com/azerothcore/mod-eluna.git"
+  ARCHITECTURE: "x64"
+  BUILD_DIR: "${{ github.workspace }}/build"
+  SOURCE_DIR: "${{ github.workspace }}/azerothcore"
+  MODULES_DIR: "${{ github.workspace }}/azerothcore/modules"
+
+jobs:
+  compile-azerothcore:
+    name: 🚀 编译 AzerothCore (${{ env.ARCHITECTURE }})
+    runs-on: ubuntu-22.04
+    steps:
+      - name: 📋 检查系统信息
+        run: |
+          echo "💻 操作系统: $(lsb_release -d | cut -f2)"
+          echo "🔧 内核版本: $(uname -r)"
+          echo "🧮 处理器: $(grep -c ^processor /proc/cpuinfo) 核心"
+          echo "💾 内存: $(free -h | awk '/^Mem:/ {print $2}')"
+        shell: bash
+
+      - name: 🛠️ 安装依赖
+        run: |
+          echo "🔄 更新系统包列表..."
+          sudo apt update -qq
+          
+          echo "📦 安装编译依赖..."
+          sudo apt install -y -qq \
+            build-essential \
+            cmake \
+            git \
+            clang \
+            libssl-dev \
+            libbz2-dev \
+            libreadline-dev \
+            libncurses-dev \
+            libboost-all-dev \
+            mysql-server \
+            libmysqlclient-dev \
+            libace-6.* \
+            libace-dev
+          
+          echo "✅ 依赖安装完成"
+        shell: bash
+        continue-on-error: false
+
+      - name: 📥 克隆 AzerothCore 仓库
+        run: |
+          echo "🔗 仓库地址: ${{ env.AZEROTHCORE_REPO }}"
+          echo "🌿 分支: ${{ env.AZEROTHCORE_BRANCH }}"
+          
+          git clone --branch ${{ env.AZEROTHCORE_BRANCH }} \
+                    --depth 1 \
+                    ${{ env.AZEROTHCORE_REPO }} \
+                    ${{ env.SOURCE_DIR }}
+          
+          echo "✅ 仓库克隆完成"
+        shell: bash
+
+      - name: 🧩 安装模块
+        run: |
+          echo "📦 模块列表: ${{ env.MODULES }}"
+          IFS=',' read -ra MOD_ARRAY <<< "${{ env.MODULES }}"
+          
+          mkdir -p ${{ env.MODULES_DIR }}
+          
+          for mod in "${MOD_ARRAY[@]}"; do
+            mod_name=$(basename "$mod" .git)
+            echo "🔽 克隆模块: $mod_name"
+            git clone --depth 1 "$mod" "${{ env.MODULES_DIR }}/$mod_name"
+          done
+          
+          echo "✅ 所有模块安装完成"
+        shell: bash
+        if: env.MODULES != ''
+
+      - name: 🔧 配置 CMake
+        run: |
+          echo "📁 创建编译目录: ${{ env.BUILD_DIR }}"
+          mkdir -p ${{ env.BUILD_DIR }}
+          cd ${{ env.BUILD_DIR }}
+          
+          echo "⚙️ 配置 CMake 选项..."
+          cmake ../azerothcore \
+            -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/azerothcore-install \
+            -DCMAKE_BUILD_TYPE=${{ github.event.inputs.build_type || 'Release' }} \  # 定时任务默认用Release
+            -Dazerothcore_PLATFORM=${{ env.ARCHITECTURE }} \
+            -DENABLE_MYSQL_SSL=ON \
+            -DTOOLS_BUILD=all \
+            -DSCRIPTS=static
+          
+          echo "✅ CMake 配置完成"
+        shell: bash
+
+      - name: 🔨 编译源代码
+        run: |
+          echo "🚀 开始编译 (${{ github.event.inputs.build_type || 'Release' }})..."
+          cd ${{ env.BUILD_DIR }}
+          
+          # 使用多线程加速编译
+          make -j $(nproc)
+          
+          echo "📦 安装编译结果..."
+          make install
+          
+          echo "✅ 编译完成"
+        shell: bash
+
+      - name: 📊 显示编译结果
+        run: |
+          echo "📁 安装目录: ${{ github.workspace }}/azerothcore-install"
+          echo "🗂️ 服务器文件列表:"
+          ls -lh ${{ github.workspace }}/azerothcore-install/bin/
+          
+          echo -e "\n📊 编译统计:"
+          echo "✅ 核心二进制文件大小:"
+          du -sh ${{ github.workspace }}/azerothcore-install/bin/*server
+        shell: bash
+
+      - name: 📦 打包编译结果
+        run: |
+          echo "📦 打包安装文件..."
+          cd ${{ github.workspace }}
+          tar -czf azerothcore-${{ env.ARCHITECTURE }}-${{ github.event.inputs.build_type || 'Release' }}.tar.gz azerothcore-install/
+          
+          echo "✅ 打包完成"
+        shell: bash
+
+      - name: 📤 上传编译产物
+        uses: actions/upload-artifact@v3
+        with:
+          name: azerothcore-build-${{ env.ARCHITECTURE }}-${{ github.event.inputs.build_type || 'Release' }}
+          path: ${{ github.workspace }}/azerothcore-*.tar.gz
+          retention-days: 7
