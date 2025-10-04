@@ -17,15 +17,165 @@ env:
   PLATFORM: "x64"
   CONFIG: "Release"
   BOOST_VERSION: "1.89.0"
-  BOOST_INSTALL_DIR: "C:/local/boost_1_89_0"  # 目标安装路径
-  # 改为指定的Boost预编译exe下载地址
+  BOOST_INSTALL_DIR: "C:/local/boost_1_89_0"
   BOOST_EXE_URL: "https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe"
-  BOOST_EXE_NAME: "boost_installer.exe"  # 本地保存的exe文件名
+  BOOST_EXE_NAME: "boost_installer.exe"
+  
+  # 新增: 各软件安装包信息
+  MYSQL_URL: "https://dev.mysql.com/get/Downloads/MySQL-8.4/mysql-8.4.0-winx64.msi"
+  MYSQL_EXE: "mysql-installer.msi"
+  MYSQL_INSTALL_DIR: "C:/Program Files/MySQL/MySQL Server 8.4"
+  
+  GIT_URL: "https://github.com/git-for-windows/git/releases/download/v2.45.2.windows.1/Git-2.45.2-64-bit.exe"
+  GIT_EXE: "git-installer.exe"
+  GIT_INSTALL_DIR: "C:/Program Files/Git"
+  
+  CMAKE_URL: "https://github.com/Kitware/CMake/releases/download/v3.30.1/cmake-3.30.1-windows-x86_64.msi"
+  CMAKE_EXE: "cmake-installer.msi"
+  CMAKE_INSTALL_DIR: "C:/Program Files/CMake"
+  
+  OPENSSL_URL: "https://slproweb.com/download/Win64OpenSSL-3_0_14.exe"
+  OPENSSL_EXE: "openssl-installer.exe"
+  OPENSSL_INSTALL_DIR: "C:/Program Files/OpenSSL-Win64"
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
+      - name: 卸载系统自带的冲突软件
+        run: |
+          # 函数: 卸载程序
+          function Uninstall-Program {
+            param([string]$DisplayName)
+            
+            $app = Get-WmiObject -Class Win32_Product | Where-Object { $_.Name -like "*$DisplayName*" }
+            if ($app) {
+              Write-Host "正在卸载: $($app.Name)"
+              $app.Uninstall() | Out-Null
+              Start-Sleep -Seconds 10
+            }
+          }
+          
+          # 卸载可能存在的旧版本
+          Uninstall-Program "MySQL"
+          Uninstall-Program "Git"
+          Uninstall-Program "CMake"
+          Uninstall-Program "OpenSSL"
+        shell: pwsh
+
+      - name: 安装Git
+        run: |
+          # 下载安装包
+          Invoke-WebRequest -Uri "${{ env.GIT_URL }}" -OutFile "${{ env.GIT_EXE }}" -UseBasicParsing
+          
+          # 静默安装
+          Write-Host "安装Git..."
+          Start-Process -FilePath ${{ env.GIT_EXE }} -ArgumentList "/verysilent /norestart /components=""icons,ext\reg\shellhere,assoc,assoc_sh""" -Wait
+          
+          # 检查安装并设置环境变量
+          if (-not (Test-Path "${{ env.GIT_INSTALL_DIR }}")) {
+            Write-Error "Git安装失败"
+            exit 1
+          }
+          
+          $gitBinPath = "${{ env.GIT_INSTALL_DIR }}\bin"
+          $gitCmdPath = "${{ env.GIT_INSTALL_DIR }}\cmd"
+          $envPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+          
+          if ($envPath -notlike "*$gitBinPath*") {
+            Write-Host "添加Git到系统环境变量..."
+            [Environment]::SetEnvironmentVariable("Path", "$envPath;$gitBinPath;$gitCmdPath", "Machine")
+            $env:Path += ";$gitBinPath;$gitCmdPath"
+          }
+          
+          # 验证安装
+          git --version
+        shell: pwsh
+
+      - name: 安装CMake
+        run: |
+          # 下载安装包
+          Invoke-WebRequest -Uri "${{ env.CMAKE_URL }}" -OutFile "${{ env.CMAKE_EXE }}" -UseBasicParsing
+          
+          # 静默安装
+          Write-Host "安装CMake..."
+          Start-Process -FilePath ${{ env.CMAKE_EXE }} -ArgumentList "/qn /norestart ADD_CMAKE_TO_PATH=System" -Wait
+          
+          # 检查安装并设置环境变量
+          if (-not (Test-Path "${{ env.CMAKE_INSTALL_DIR }}")) {
+            Write-Error "CMake安装失败"
+            exit 1
+          }
+          
+          $cmakeBinPath = "${{ env.CMAKE_INSTALL_DIR }}\bin"
+          $envPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+          
+          if ($envPath -notlike "*$cmakeBinPath*") {
+            Write-Host "添加CMake到系统环境变量..."
+            [Environment]::SetEnvironmentVariable("Path", "$envPath;$cmakeBinPath", "Machine")
+            $env:Path += ";$cmakeBinPath"
+          }
+          
+          # 验证安装
+          cmake --version
+        shell: pwsh
+
+      - name: 安装MySQL 8.4
+        run: |
+          # 下载安装包
+          Invoke-WebRequest -Uri "${{ env.MYSQL_URL }}" -OutFile "${{ env.MYSQL_EXE }}" -UseBasicParsing
+          
+          # 静默安装
+          Write-Host "安装MySQL..."
+          Start-Process -FilePath "msiexec.exe" -ArgumentList "/i ${{ env.MYSQL_EXE }} /qn INSTALLDIR=""${{ env.MYSQL_INSTALL_DIR }}""" -Wait
+          
+          # 检查安装并设置环境变量
+          if (-not (Test-Path "${{ env.MYSQL_INSTALL_DIR }}")) {
+            Write-Error "MySQL安装失败"
+            exit 1
+          }
+          
+          $mysqlBinPath = "${{ env.MYSQL_INSTALL_DIR }}\bin"
+          $envPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+          
+          if ($envPath -notlike "*$mysqlBinPath*") {
+            Write-Host "添加MySQL到系统环境变量..."
+            [Environment]::SetEnvironmentVariable("Path", "$envPath;$mysqlBinPath", "Machine")
+            $env:Path += ";$mysqlBinPath"
+          }
+          
+          # 验证安装
+          mysql --version
+        shell: pwsh
+
+      - name: 安装OpenSSL
+        run: |
+          # 下载安装包
+          Invoke-WebRequest -Uri "${{ env.OPENSSL_URL }}" -OutFile "${{ env.OPENSSL_EXE }}" -UseBasicParsing
+          
+          # 静默安装
+          Write-Host "安装OpenSSL..."
+          Start-Process -FilePath ${{ env.OPENSSL_EXE }} -ArgumentList "/S /verysilent /norestart /DIR=""${{ env.OPENSSL_INSTALL_DIR }}""" -Wait
+          
+          # 检查安装并设置环境变量
+          if (-not (Test-Path "${{ env.OPENSSL_INSTALL_DIR }}")) {
+            Write-Error "OpenSSL安装失败"
+            exit 1
+          }
+          
+          $opensslBinPath = "${{ env.OPENSSL_INSTALL_DIR }}\bin"
+          $envPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+          
+          if ($envPath -notlike "*$opensslBinPath*") {
+            Write-Host "添加OpenSSL到系统环境变量..."
+            [Environment]::SetEnvironmentVariable("Path", "$envPath;$opensslBinPath", "Machine")
+            $env:Path += ";$opensslBinPath"
+          }
+          
+          # 验证安装
+          openssl version
+        shell: pwsh
+
       - name: 拉取AzerothCore源码
         uses: actions/checkout@v4
         with:
@@ -38,7 +188,9 @@ jobs:
       - name: 拉取模块
         run: |
           $modulesPath = "${{ env.SOURCE_DIR }}\modules"
-          if (-not (Test-Path $modulesPath)) { New-Item -ItemType Directory -Path $modulesPath -Force | Out-Null }
+          if (-not (Test-Path $modulesPath)) {
+            New-Item -ItemType Directory -Path $modulesPath -Force | Out-Null
+          }
           
           foreach ($module in $env:MODULES -split ' ') {
             $moduleName = $module.Split('/')[-1]
@@ -47,39 +199,21 @@ jobs:
           }
         shell: pwsh
 
-      - name: 安装基础依赖（MySQL/OpenSSL）
+      - name: 下载并静默安装Boost 1.89.0
         run: |
-          # 安装Chocolatey包管理器
-          Set-ExecutionPolicy Bypass -Scope Process -Force
-          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-          
-          # 安装MySQL和OpenSSL（版本兼容AzerothCore）
-          choco install -y mysql --version=8.0.31
-          choco install -y openssl --version=1.1.1q
-          # 无需安装7zip（改用exe直接安装，无需解压源码）
-        shell: pwsh
-
-      - name: 下载并静默安装Boost 1.89.0（使用预编译exe）
-        run: |
-          # 1. 创建目标安装目录（确保目录存在，避免安装器报错）
           New-Item -ItemType Directory -Path "${{ env.BOOST_INSTALL_DIR }}" -Force | Out-Null
           
-          # 2. 下载Boost安装exe
           Write-Host "正在下载Boost安装包: ${{ env.BOOST_EXE_URL }}"
           Invoke-WebRequest -Uri "${{ env.BOOST_EXE_URL }}" -OutFile "${{ env.BOOST_EXE_NAME }}" -UseBasicParsing
           
-          # 3. 验证exe是否下载成功
           if (-not (Test-Path "${{ env.BOOST_EXE_NAME }}")) {
             Write-Error "Boost安装包下载失败！"
             exit 1
           }
           
-          # 4. 静默安装（Boost exe安装器支持的参数：/S=静默，--prefix=指定安装路径）
           Write-Host "正在静默安装Boost到: ${{ env.BOOST_INSTALL_DIR }}"
           .\${{ env.BOOST_EXE_NAME }} /S --prefix="${{ env.BOOST_INSTALL_DIR }}"
           
-          # 5. 验证安装结果（检查关键目录和文件）
           $boostIncludeDir = "${{ env.BOOST_INSTALL_DIR }}\include"
           $boostLibDir = "${{ env.BOOST_INSTALL_DIR }}\lib"
           if (-not (Test-Path $boostIncludeDir) -or -not (Test-Path $boostLibDir)) {
@@ -87,37 +221,27 @@ jobs:
             exit 1
           } else {
             Write-Host "Boost安装成功！"
-            Write-Host "Include目录: $boostIncludeDir"
-            Write-Host "Lib目录: $boostLibDir"
           }
         shell: pwsh
 
       - name: 设置BOOST_ROOT系统环境变量
         run: |
-          # 1. 设置当前会话环境变量（确保后续步骤生效）
           $env:BOOST_ROOT = "${{ env.BOOST_INSTALL_DIR }}"
-          
-          # 2. 设置系统级环境变量（持久化，/M表示系统级）
           setx BOOST_ROOT "${{ env.BOOST_INSTALL_DIR }}" /M
           
-          # 3. 验证环境变量
-          Write-Host "=== BOOST_ROOT 环境变量验证 ==="
-          Write-Host "当前会话BOOST_ROOT: $env:BOOST_ROOT"
-          Write-Host "系统BOOST_ROOT: $(Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' -Name BOOST_ROOT | Select-Object -ExpandProperty BOOST_ROOT)"
+          Write-Host "BOOST_ROOT 环境变量: $env:BOOST_ROOT"
           
-          # 4. 验证安装路径文件（确保版本正确）
           $versionFile = "${{ env.BOOST_INSTALL_DIR }}\include\boost\version.hpp"
           if (Test-Path $versionFile) {
             Write-Host "找到Boost版本文件: $versionFile"
-            # 读取版本号（验证是否为1.89.0）
             $versionContent = Get-Content $versionFile -Raw
             if ($versionContent -match 'BOOST_LIB_VERSION "1_89_0"') {
               Write-Host "Boost版本验证成功: 1.89.0"
             } else {
-              Write-Warning "Boost版本文件存在，但未匹配到1.89.0（可能版本错误）"
+              Write-Warning "Boost版本不匹配"
             }
           } else {
-            Write-Error "未找到Boost版本文件: $versionFile"
+            Write-Error "未找到Boost版本文件"
             exit 1
           }
         shell: pwsh
@@ -128,28 +252,27 @@ jobs:
           New-Item -ItemType Directory -Path ${{ env.INSTALL_DIR }} -Force | Out-Null
         shell: pwsh
 
-      - name: CMake生成解决方案（适配Boost 1.89.0预编译包）
+      - name: CMake生成解决方案
         run: |
           cmake `
             -G "${{ env.VS_VERSION }}" `
             -A ${{ env.PLATFORM }} `
             -S "${{ env.SOURCE_DIR }}" `
             -B "${{ env.BUILD_DIR }}" `
-            -DCMAKE_POLICY_DEFAULT_CMP0144=NEW `  # 启用BOOST_ROOT识别
-            -DCMAKE_POLICY_DEFAULT_CMP0167=OLD `  # 兼容FindBoost模块（避免新版本CMake报错）
-            -DBOOST_ROOT="${{ env.BOOST_INSTALL_DIR }}" `  # 显式指定Boost根路径
-            -DBoost_INCLUDE_DIR="${{ env.BOOST_INSTALL_DIR }}\include" `  # 头文件路径（预编译包默认结构）
-            -DBoost_LIBRARY_DIR="${{ env.BOOST_INSTALL_DIR }}\lib" `  # 库文件路径（预编译包默认结构）
+            -DCMAKE_POLICY_DEFAULT_CMP0144=NEW `
+            -DCMAKE_POLICY_DEFAULT_CMP0167=OLD `
+            -DBOOST_ROOT="${{ env.BOOST_INSTALL_DIR }}" `
+            -DBoost_INCLUDE_DIR="${{ env.BOOST_INSTALL_DIR }}\include" `
+            -DBoost_LIBRARY_DIR="${{ env.BOOST_INSTALL_DIR }}\lib" `
             -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
             -DCMAKE_BUILD_TYPE="${{ env.CONFIG }}" `
             -DBUILD_AZEROTHCORE_TESTS=OFF `
             -DSCRIPTS=static `
             -DTOOLS=ON `
-            -DMYSQL_ADD_INCLUDE_PATH="C:\Program Files\MySQL\MySQL Server 8.0\include" `
-            -DMYSQL_LIBRARY="C:\Program Files\MySQL\MySQL Server 8.0\lib\libmysql.lib" `
-            -DOPENSSL_ROOT_DIR="C:\Program Files\OpenSSL-Win64"
+            -DMYSQL_ADD_INCLUDE_PATH="${{ env.MYSQL_INSTALL_DIR }}\include" `
+            -DMYSQL_LIBRARY="${{ env.MYSQL_INSTALL_DIR }}\lib\libmysql.lib" `
+            -DOPENSSL_ROOT_DIR="${{ env.OPENSSL_INSTALL_DIR }}"
         shell: pwsh
-        # 关键说明：msvc-14.1的Boost预编译包可兼容VS2022（msvc-14.3），无需额外工具集配置
 
       - name: 使用VS2022构建解决方案
         run: |
@@ -159,8 +282,7 @@ jobs:
             exit 1
           }
           Write-Host "正在使用VS2022构建解决方案: $solutionPath"
-          # 使用devenv.com构建，指定Release+x64配置，目标为INSTALL（输出到INSTALL_DIR）
-          devenv.com $solutionPath /Build "${{ env.CONFIG }}|${{ env.PLATFORM }}" /Project INSTALL
+          msbuild $solutionPath /p:Configuration=${{ env.CONFIG }};Platform=${{ env.PLATFORM }} /t:INSTALL /m
         shell: pwsh
 
       - name: 打包构建产物
@@ -178,4 +300,4 @@ jobs:
         with:
           name: azerothcore-windows-exe_boost-${{ env.BOOST_VERSION }}
           path: "azerothcore_${{ env.CONFIG }}_v${{ env.BOOST_VERSION }}.zip"
-          retention-days: 14  # 产物保留14天
+          retention-days: 14
