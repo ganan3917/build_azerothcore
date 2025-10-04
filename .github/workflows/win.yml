@@ -1,120 +1,107 @@
-name: 编译AzerothCore（Windows-带Boost配置）
+name: Build AzerothCore (Windows)
+
+# 触发条件：手动触发和每天北京时间3点自动运行
+on:
+  workflow_dispatch:  # 手动触发
+  schedule:
+    - cron: '0 19 * * *'  # UTC时间19点 = 北京时间3点
 
 env:
-  REPO: "azerothcore/azerothcore-wotlk"
-  BRANCH: "main"
-  INSTALL_DIR: "./install"
-
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: "0 19 * * *"
+  # 配置参数 - 可根据需要修改
+  AZEROTHCORE_REPO: "azerothcore/azerothcore-wotlk"  # 主仓库地址
+  AZEROTHCORE_BRANCH: "master"                       # 主仓库分支
+  MODULES: "azerothcore/mod-ah-bot azerothcore/mod-eluna azerothcore/mod-transmog"  # 模块列表，空格分隔
+  BUILD_DIR: "${{ github.workspace }}/build"
+  INSTALL_DIR: "${{ github.workspace }}/azerothcore-install"
+  CMAKE_GENERATOR: "Visual Studio 17 2022"
+  CMAKE_PLATFORM: "x64"
+  MYSQL_ROOT_PASSWORD: "root"
 
 jobs:
   build:
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: pwsh
-        working-directory: ${{ github.workspace }}
-
+    name: Build AzerothCore with VS2022
+    runs-on: windows-latest  # 使用GitHub提供的Windows镜像，包含VS2022
+    
     steps:
-      - name: 拉取源码及核心子模块
+      - name: Checkout AzerothCore source
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.REPO }}
-          ref: ${{ env.BRANCH }}
-          submodules: recursive
+          repository: ${{ env.AZEROTHCORE_REPO }}
+          ref: ${{ env.AZEROTHCORE_BRANCH }}
+          path: 'azerothcore'
+          submodules: 'recursive'
           fetch-depth: 0
-          clean: true
-
-      - name: 安装必要依赖（含最新版Boost）
+          
+      - name: Checkout modules
         run: |
-          # 安装cmake、zlib和最新版Boost
-          choco install -y `
-            cmake `
-            zlib `
-            boost `  # 安装最新版Boost C++
-            --no-progress
-          
-          # 动态查找Boost安装根目录（Chocolatey通常安装在lib/boost下）
-          $boostRoot = Get-ChildItem -Path "C:\ProgramData\chocolatey\lib\boost" `
-            -Recurse -Filter "boost" `  # 查找包含boost核心目录的路径
-            | Where-Object { $_.FullName -match "boost\\tools\\boost$" -or $_.FullName -match "boost$" } `
-            | Select-Object -First 1 -ExpandProperty FullName
-          
-          if (-not $boostRoot) {
-            Write-Error "未找到Boost安装目录，请检查Chocolatey安装是否成功"
-            exit 1
+          $modulesDir = "${{ github.workspace }}\azerothcore\modules"
+          if (-not (Test-Path $modulesDir)) {
+            New-Item -ItemType Directory -Path $modulesDir -Force | Out-Null
           }
           
-          # 设置BOOST_ROOT环境变量（供后续CMake使用）
-          echo "BOOST_ROOT=$boostRoot" >> $env:GITHUB_ENV
-          Write-Host "已设置BOOST_ROOT: $boostRoot"
-
-      - name: 初始化VS2022 x64编译环境
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-          toolset: 143
-
-      - name: 生成VS2022解决方案（指定Boost路径）
+          foreach ($module in $env:MODULES -split ' ') {
+            $moduleName = $module.Split('/')[-1]
+            $modulePath = Join-Path $modulesDir $moduleName
+            Write-Host "Cloning module: $module to $modulePath"
+            git clone https://github.com/$module.git $modulePath
+          }
+        shell: pwsh
+        
+      - name: Set up dependencies
         run: |
-          mkdir -Force build | Out-Null
-          cd build
-          cmake .. `
-            -G "Visual Studio 17 2022" `
-            -A x64 `
-            -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
+          # 安装Chocolatey包管理器
+          Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+          
+          # 安装AzerothCore所需依赖
+          choco install -y mysql --version=8.0.31
+          choco install -y openssl --version=1.1.1q
+          choco install -y boost-msvc-14.3 --version=1.79.0
+          choco install -y git
+          
+          # 启动MySQL服务
+          net start MySQL
+          
+          # 配置MySQL密码
+          mysql -u root -p${{ env.MYSQL_ROOT_PASSWORD }} -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${{ env.MYSQL_ROOT_PASSWORD }}'; FLUSH PRIVILEGES;"
+        shell: pwsh
+        
+      - name: Create build directory
+        run: |
+          New-Item -ItemType Directory -Path ${{ env.BUILD_DIR }} -Force | Out-Null
+          New-Item -ItemType Directory -Path ${{ env.INSTALL_DIR }} -Force | Out-Null
+        shell: pwsh
+        
+      - name: Configure CMake
+        run: |
+          cmake `
+            -G "${{ env.CMAKE_GENERATOR }}" `
+            -A ${{ env.CMAKE_PLATFORM }} `
+            -S "${{ github.workspace }}/azerothcore" `
+            -B ${{ env.BUILD_DIR }} `
+            -DCMAKE_INSTALL_PREFIX=${{ env.INSTALL_DIR }} `
             -DCMAKE_BUILD_TYPE=Release `
-            -DAC_USE_STD_MALLOC=ON `
-            -DTOOLS_BUILD=ON `
+            -DBUILD_AZEROTHCORE_TESTS=OFF `
             -DSCRIPTS=static `
-            -DBOOST_ROOT="${{ env.BOOST_ROOT }}"  # 显式指定Boost路径
-          if (-not (Test-Path "AzerothCore.sln")) {
-            Write-Error "CMake生成解决方案失败，未找到AzerothCore.sln"
-            exit 1
-          }
-
-      - name: 用MSBuild编译项目
+            -DTOOLS=ON `
+            -DMYSQL_ADD_INCLUDE_PATH="C:\Program Files\MySQL\MySQL Server 8.0\include" `
+            -DMYSQL_LIBRARY="C:\Program Files\MySQL\MySQL Server 8.0\lib\libmysql.lib" `
+            -DOPENSSL_ROOT_DIR="C:\Program Files\OpenSSL-Win64" `
+            -DBOOST_ROOT="C:\local\boost_1_79_0"
+        shell: pwsh
+        
+      - name: Build with MSBuild
         run: |
-          $slnPath = "./build/AzerothCore.sln"
-          msbuild $slnPath `
-            /p:Configuration=Release `
-            /p:Platform=x64 `
-            /p:VisualStudioVersion=17.0 `
-            /m `
-            /nologo `
-            /fl:msbuild.log
-          if (-not (Test-Path "./build/bin/Release/authserver.exe")) {
-            Write-Error "authserver.exe编译失败，未找到文件"
-            exit 1
-          }
-          if (-not (Test-Path "./build/bin/Release/worldserver.exe")) {
-            Write-Error "worldserver.exe编译失败，未找到文件"
-            exit 1
-          }
-
-      - name: 安装编译结果
+          cmake --build ${{ env.BUILD_DIR }} --config Release --target install -- /maxcpucount
+        shell: pwsh
+        
+      - name: Package build artifacts
         run: |
-          cd build
-          cmake --install . --config Release
-          if (-not (Test-Path "${{ env.INSTALL_DIR }}/bin/authserver.exe")) {
-            Write-Error "安装失败，未在目标目录找到authserver.exe"
-            exit 1
-          }
-
-      - name: 压缩编译产物
-        run: |
-          7z a -tzip "azerothcore-${{ env.BRANCH }}-win64.zip" "${{ env.INSTALL_DIR }}\*"
-          if (-not (Test-Path "azerothcore-${{ env.BRANCH }}-win64.zip")) {
-            Write-Error "压缩失败，未生成zip包"
-            exit 1
-          }
-
-      - name: 上传编译结果及日志
+          Compress-Archive -Path ${{ env.INSTALL_DIR }}\* -DestinationPath azerothcore-build.zip -Force
+        shell: pwsh
+        
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: azerothcore-${{ env.BRANCH }}-exe
-          path: "azerothcore-${{ env.BRANCH }}-win64.zip, ./build/msbuild.log"
-          retention-days: 14
+          name: azerothcore-windows-build
+          path: azerothcore-build.zip
+          retention-days: 14  # 保留14天
