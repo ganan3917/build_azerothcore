@@ -23,7 +23,7 @@ jobs:
       - name: 拉取源码及核心子模块
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.REPO_URL }}  # 修正：使用预设的仓库URL
+          repository: ${{ env.REPO_URL }}
           ref: ${{ env.BRANCH }}
           submodules: recursive
           fetch-depth: 0
@@ -31,21 +31,19 @@ jobs:
 
       - name: 安装编译依赖（修正MySQL连接器类型）
         run: |
-          # 停止并移除可能存在的MySQL服务
           if (Get-Service -Name "MySQL" -ErrorAction SilentlyContinue) {
             Stop-Service -Name "MySQL" -Force
             sc delete MySQL | Out-Null
           }
           
-          # 安装依赖（关键：使用MySQL C连接器而非C++）
           choco install -y `
             cmake `
-            mysql-connector-c --version 8.0.36 `  # 修正：安装C连接器
+            mysql-connector-c --version 8.0.36 `
             openssl --version 1.1.1w `
             zlib `
             --no-progress
           
-          # 动态查找MySQL C连接器的头文件路径
+          # 动态查找MySQL C连接器头文件路径
           $mysqlInclude = Get-ChildItem -Path "C:\ProgramData\chocolatey\lib\mysql-connector-c" `
             -Recurse -Filter "include" `
             | Where-Object { $_.FullName -match "include$" } `
@@ -56,7 +54,7 @@ jobs:
           }
           echo "MYSQL_INCLUDE=$mysqlInclude" >> $env:GITHUB_ENV
           
-          # 动态查找MySQL C连接器的库文件
+          # 动态查找MySQL C连接器库文件
           $mysqlLib = Get-ChildItem -Path "C:\ProgramData\chocolatey\lib\mysql-connector-c" `
             -Recurse -Filter "libmysql.lib" `
             | Select-Object -First 1 -ExpandProperty FullName
@@ -66,7 +64,6 @@ jobs:
           }
           echo "MYSQL_LIB=$mysqlLib" >> $env:GITHUB_ENV
           
-          # 验证路径
           Write-Host "找到MySQL头文件路径: $mysqlInclude"
           Write-Host "找到MySQL库文件路径: $mysqlLib"
 
@@ -76,7 +73,7 @@ jobs:
           arch: x64
           toolset: 143
 
-      - name: 生成VS2022解决方案（使用动态查找的依赖路径）
+      - name: 生成VS2022解决方案
         run: |
           mkdir -Force build | Out-Null
           cd build
@@ -139,6 +136,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: azerothcore-${{ env.BRANCH }}-exe
-          path: 
-            - azerothcore-${{ env.BRANCH }}-win64.zip, ./build/msbuild.log
+          # 修复：使用逗号分隔的单字符串路径，避免YAML序列解析错误
+          path: "azerothcore-${{ env.BRANCH }}-win64.zip, ./build/msbuild.log"
           retention-days: 14
