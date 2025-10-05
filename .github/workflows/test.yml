@@ -1,0 +1,114 @@
+name: Build azerothcore-wotlk
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 19 * * *
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      # 路径配置
+      ROOT_DIR: ./azerothcore
+      BUILD_DIR: ./azerothcore/build
+      INSTALL_DIR: ./azerothcore/build/install
+      MODULES_DIR: ./azerothcore/modules
+      # 核心配置
+      ACORE_REPO: "https://github.com/azerothcore/azerothcore-wotlk.git"
+      ACORE_BRANCH: "master"
+      BUILD_TYPE: "MinSizeRel"
+      MODULES_INPUT: |
+              https://github.com/azerothcore/mod-eluna.git master
+              https://github.com/azerothcore/mod-learn-spells.git master
+              https://github.com/azerothcore/mod-autobalance.git master
+              https://github.com/azerothcore/mod-auto-revive.git master
+              
+    steps:
+      - name: 安装依赖
+        run: |
+          sudo apt update -y
+          sudo apt install -y \
+            git cmake make clang \
+            libmysqlclient-dev libssl-dev \
+            libbz2-dev libreadline-dev libncurses-dev \
+            libboost-all-dev libcurl4-openssl-dev
+          sudo apt clean
+
+      - name: 生成时间
+        id: ts
+        run: |
+          # 使用环境文件方式设置输出（替代set-output）
+          echo "utc=$(date -u +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
+          echo "sh=$(TZ='Asia/Shanghai' date +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
+
+      - name: 克隆仓库
+        run: |
+          git clone --branch "${{ env.ACORE_BRANCH }}" "${{ env.ACORE_REPO }}" "${{ env.ROOT_DIR }}"
+          cd "${{ env.ROOT_DIR }}" && git submodule update --init --recursive
+
+      - name: 拉取模块
+        id: modules
+        run: |
+          mkdir -p "${{ env.MODULES_DIR }}"
+          success=()
+          failure=()
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            repo=$(echo "$line" | awk '{print $1}')
+            branch=$(echo "$line" | awk '{print $2}')
+            name=$(basename "$repo" .git)
+            if git clone --depth 1 --branch "$branch" "$repo" "${{ env.MODULES_DIR }}/$name"; then
+              success+=("$name（$branch）")
+            else
+              failure+=("$name（$branch）")
+              echo "⚠️ 模块 $name 克隆失败，将继续构建"
+            fi
+          done <<< "${{ env.MODULES_INPUT }}"
+          # 使用环境文件方式设置输出（替代set-output）
+          echo "success=$(IFS=';'; echo "${success[*]}")" >> "$GITHUB_OUTPUT"
+          echo "failure=$(IFS=';'; echo "${failure[*]}")" >> "$GITHUB_OUTPUT"
+          
+      - name: 配置与编译
+        run: |
+          mkdir -p "${{ env.BUILD_DIR }}" && cd "${{ env.BUILD_DIR }}"
+          cmake ../ \
+            -DCMAKE_BUILD_TYPE="${{ env.BUILD_TYPE }}" \
+            -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DWITH_WARNINGS=1 \
+            -DTOOLS_BUILD=all \
+            -DSCRIPTS=static \
+            -DMODULES=static
+          make -j$(nproc) && make install
+          
+      - name: 打包文件
+        id: package
+        run: |
+          # 修正打包路径（原路径存在重复build目录，简化路径）
+          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" "${{ env.INSTALL_DIR }}"
+          # 使用环境文件方式设置输出（替代set-output）
+          echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: 创建Release并上传资产
+        # 使用维护中的release-action替代官方旧版action，解决set-output警告
+        uses: ncipollo/release-action@v1
+        with:
+          tag: "Azerothcore-Wotlk_${{ steps.ts.outputs.utc }}"
+          name: "Auto Build Azerothcore-Wotlk ${{ steps.ts.outputs.sh }}"
+          body: |
+            ### Auto Build Azerothcore-Wotlk
+            - 核心分支：${{ env.ACORE_BRANCH }}
+            - 成功模块：${{ steps.modules.outputs.success }}
+            - 失败模块：${{ steps.modules.outputs.failure || '无' }}
+          artifacts: "${{ steps.package.outputs.name }}"
+          token: ${{ secrets.BUILD_AZEROTHCORE }}
+          replaceArtifacts: true  # 替换同名资产（如果存在）
+
+      - name: 保留最新2个Release
+        uses: dev-drprasad/delete-older-releases@v0.3.4
+        with:
+          keep_latest: 2
+          delete_tags: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.BUILD_AZEROTHCORE }}
