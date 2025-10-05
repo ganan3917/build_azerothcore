@@ -31,7 +31,7 @@ jobs:
       BUILD_DIR: ${{ github.workspace }}/build
       INSTALL_DIR: ${{ github.workspace }}/install
       BOOST_VERSION: 1.89.0
-      BOOST_INSTALL_DIR: D:\boost
+      BOOST_INSTALL_PARENT_DIR: D:\boost_parent  # 父目录
       BOOST_DOWNLOAD_URL: https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe
 
     steps:
@@ -57,37 +57,44 @@ jobs:
 
       - name: Install Boost
         run: |
-          # 1. 确保D盘安装目录存在
-          if (-not (Test-Path "${{ env.BOOST_INSTALL_DIR }}")) {
-            New-Item -Path "${{ env.BOOST_INSTALL_DIR }}" -ItemType Directory -Force | Out-Null
-            Write-Host "Created D: drive Boost directory: ${{ env.BOOST_INSTALL_DIR }}"
+          # 1. 确保安装父目录存在
+          if (-not (Test-Path "${{ env.BOOST_INSTALL_PARENT_DIR }}")) {
+            New-Item -Path "${{ env.BOOST_INSTALL_PARENT_DIR }}" -ItemType Directory -Force | Out-Null
+            Write-Host "Created Boost parent directory: ${{ env.BOOST_INSTALL_PARENT_DIR }}"
           }
-
-          # 2. 下载Boost官方64位预编译包（VS2022兼容）
+          
+          # 2. 下载Boost安装器
           $tempExePath = "$env:TEMP\boost_installer.exe"
           Write-Host "Downloading Boost from: ${{ env.BOOST_DOWNLOAD_URL }}"
           Invoke-WebRequest -Uri "${{ env.BOOST_DOWNLOAD_URL }}" -OutFile $tempExePath -UseBasicParsing
-
-          # 3. 验证下载文件是否有效（不是HTML）
-          $fileType = (Get-Item $tempExePath).Length
-          if ($fileType -lt 1000000) {  # 小于1MB的大概率是错误页面
+          
+          # 3. 验证下载文件
+          if ((Get-Item $tempExePath).Length -lt 1000000) {
             throw "Boost installer download failed (file too small). Check URL."
           }
-
-          # 4. 静默安装到D盘（Boost安装器支持的静默参数）
-          Write-Host "Installing Boost to ${{ env.BOOST_INSTALL_DIR }}"
-          Start-Process -FilePath $tempExePath -ArgumentList "/VERYSILENT /DIR=`"${{ env.BOOST_INSTALL_DIR }}`"" -Wait -NoNewWindow
-
-          # 5. 验证安装结果（检查关键目录）
-          $includePath = "${{ env.BOOST_INSTALL_DIR }}\include"
-          $libPath = "${{ env.BOOST_INSTALL_DIR }}\lib64-msvc-14.3"
-          if (-not (Test-Path $includePath) -or -not (Test-Path $libPath)) {
-            throw "Boost installation failed - missing include/lib directory. Check install log."
+          
+          # 4. 静默安装（安装器会在父目录下创建版本号子目录）
+          Write-Host "Installing Boost to parent directory: ${{ env.BOOST_INSTALL_PARENT_DIR }}"
+          Start-Process -FilePath $tempExePath -ArgumentList "/VERYSILENT /DIR=`"${{ env.BOOST_INSTALL_PARENT_DIR }}`"" -Wait -NoNewWindow
+          
+          # 5. 构建实际Boost根目录路径（处理版本号子目录）
+          $boostVersionDir = "boost_$(${{ env.BOOST_VERSION }} -replace '\.', '_')"
+          $actualBoostRoot = "${{ env.BOOST_INSTALL_PARENT_DIR }}\$boostVersionDir"
+          Write-Host "Expected Boost root directory: $actualBoostRoot"
+          
+          # 6. 验证安装结果
+          $includePath = "$actualBoostRoot\include"
+          $libPath = "$actualBoostRoot\lib64-msvc-14.3"
+          if (-not (Test-Path $includePath)) {
+            throw "Boost include directory missing: $includePath"
           }
-
-          # 6. 设置BOOST_ROOT环境变量
-          echo "BOOST_ROOT=${{ env.BOOST_INSTALL_DIR }}" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "BOOST_ROOT set to: ${{ env.BOOST_INSTALL_DIR }}"
+          if (-not (Test-Path $libPath)) {
+            throw "Boost library directory missing: $libPath"
+          }
+          
+          # 7. 设置BOOST_ROOT环境变量
+          echo "BOOST_ROOT=$actualBoostRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Successfully set BOOST_ROOT to: $actualBoostRoot"
         shell: pwsh
 
       - name: Configure CMake
