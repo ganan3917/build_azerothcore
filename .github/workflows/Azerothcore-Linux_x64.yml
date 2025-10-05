@@ -80,8 +80,8 @@ jobs:
       - name: 打包文件
         id: package
         run: |
-          cd /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/
-          sudo chmod -R 755 /install
+          cd /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install
+          sudo chmod 777 /install
           tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
 
