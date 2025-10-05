@@ -88,7 +88,7 @@ jobs:
           cd /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/
           # 修正打包路径（原路径存在重复build目录，简化路径）
           sudo tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" \
-            --exclude="./.git" \
+            --exclude="./lib" \
             --exclude="./include" \
             ./
           # 使用环境文件方式设置输出（替代set-output）
