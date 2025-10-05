@@ -1,4 +1,4 @@
-name: Build AzerothCore-WoTLK win
+name: Build AzerothCore-WoTLK
 
 on:
   workflow_dispatch:
@@ -31,6 +31,7 @@ jobs:
       BUILD_DIR: ${{ github.workspace }}/build
       INSTALL_DIR: ${{ github.workspace }}/install
       BOOST_VERSION: 1.82.0
+      BOOST_INSTALL_DIR: D:\boost  # Boost安装到D盘根目录下的boost文件夹
 
     steps:
       - name: Checkout AzerothCore
@@ -53,23 +54,28 @@ jobs:
           }
         shell: pwsh
 
-      - name: Install Boost
+      - name: Install Boost to D: drive
         run: |
-          # 检查预安装的Boost
-          $boostPath = "C:\hostedtoolcache\windows\Boost\${{ env.BOOST_VERSION }}\x64"
-          
-          if (Test-Path $boostPath) {
-            Write-Host "Found pre-installed Boost at $boostPath"
-          } else {
-            # 如果没有预安装，则通过choco安装
-            Write-Host "Installing Boost via Chocolatey"
-            choco install boost-msvc-14.3 --version=${{ env.BOOST_VERSION }} -y
-            $boostPath = "C:\Program Files\Boost"
+          # 确保D盘Boost安装目录存在
+          if (-not (Test-Path "${{ env.BOOST_INSTALL_DIR }}")) {
+            New-Item -Path "${{ env.BOOST_INSTALL_DIR }}" -ItemType Directory -Force | Out-Null
+            Write-Host "Created Boost install directory: ${{ env.BOOST_INSTALL_DIR }}"
           }
-          
-          # 设置BOOST_ROOT环境变量
-          echo "BOOST_ROOT=$boostPath" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "BOOST_ROOT set to: $boostPath"
+
+          # 通过Chocolatey安装Boost到D盘指定目录
+          Write-Host "Installing Boost ${{ env.BOOST_VERSION }} to ${{ env.BOOST_INSTALL_DIR }}"
+          choco install boost-msvc-14.3 --version=${{ env.BOOST_VERSION }} `
+            --install-directory="${{ env.BOOST_INSTALL_DIR }}" `
+            -y --no-progress
+
+          # 验证安装是否成功
+          if (-not (Test-Path "${{ env.BOOST_INSTALL_DIR }}\include")) {
+            throw "Boost installation failed - include directory not found"
+          }
+
+          # 设置BOOST_ROOT环境变量（指向实际安装路径）
+          echo "BOOST_ROOT=${{ env.BOOST_INSTALL_DIR }}" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "BOOST_ROOT set to: ${{ env.BOOST_INSTALL_DIR }}"
         shell: pwsh
 
       - name: Configure CMake
@@ -81,7 +87,7 @@ jobs:
             -G "Visual Studio 17 2022" `
             -A x64 `
             -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
-            -DBOOST_ROOT="${{ env.BOOST_ROOT }}" `
+            -DBOOST_ROOT="${{ env.BOOST_ROOT }}" ` 
             -DTOOLS=1 `
             -DSCRIPTS=1 `
             -DCMAKE_BUILD_TYPE=Release
