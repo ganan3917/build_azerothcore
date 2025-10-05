@@ -30,8 +30,9 @@ jobs:
       SOURCE_DIR: ${{ github.workspace }}/azerothcore
       BUILD_DIR: ${{ github.workspace }}/build
       INSTALL_DIR: ${{ github.workspace }}/install
-      BOOST_VERSION: 1.89.0  # 注意：这里的版本号需要和下载URL匹配
-      BOOST_INSTALL_PARENT_DIR: D:\boost_parent
+      BOOST_VERSION: 1.89.0
+      # 新增：Boost安装目标路径
+      BOOST_INSTALL_DIR: D:\boost\boost_1_89_0
       BOOST_DOWNLOAD_URL: https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe
 
     steps:
@@ -57,37 +58,36 @@ jobs:
 
       - name: Install Boost
         run: |
-          # 1. 确保安装父目录存在
-          if (-not (Test-Path "${{ env.BOOST_INSTALL_PARENT_DIR }}")) {
-            New-Item -Path "${{ env.BOOST_INSTALL_PARENT_DIR }}" -ItemType Directory -Force | Out-Null
-            Write-Host "Created Boost parent directory: ${{ env.BOOST_INSTALL_PARENT_DIR }}"
+          # 1. 确保D盘临时目录存在（用于存放安装包）
+          if (-not (Test-Path "D:\temp")) {
+            New-Item -Path "D:\temp" -ItemType Directory -Force | Out-Null
+            Write-Host "Created D:\temp for Boost installer"
           }
           
-          # 2. 下载Boost安装器
-          $tempExePath = "$env:TEMP\boost_installer.exe"
-          Write-Host "Downloading Boost from: ${{ env.BOOST_DOWNLOAD_URL }}"
-          Invoke-WebRequest -Uri "${{ env.BOOST_DOWNLOAD_URL }}" -OutFile $tempExePath -UseBasicParsing
+          # 2. 确保Boost最终安装目录的父目录存在
+          $boostParentDir = Split-Path -Parent "${{ env.BOOST_INSTALL_DIR }}"
+          if (-not (Test-Path $boostParentDir)) {
+            New-Item -Path $boostParentDir -ItemType Directory -Force | Out-Null
+            Write-Host "Created Boost parent directory: $boostParentDir"
+          }
           
-          # 3. 验证下载文件
-          if ((Get-Item $tempExePath).Length -lt 1000000) {
+          # 3. 下载Boost安装器到D盘临时目录
+          $installerPath = "D:\temp\boost_installer.exe"
+          Write-Host "Downloading Boost from: ${{ env.BOOST_DOWNLOAD_URL }} to $installerPath"
+          Invoke-WebRequest -Uri "${{ env.BOOST_DOWNLOAD_URL }}" -OutFile $installerPath -UseBasicParsing
+          
+          # 4. 验证下载文件
+          if ((Get-Item $installerPath).Length -lt 1000000) {
             throw "Boost installer download failed (file too small). Check URL."
           }
           
-          # 4. 静默安装（安装器会在父目录下创建版本号子目录）
-          Write-Host "Installing Boost to parent directory: ${{ env.BOOST_INSTALL_PARENT_DIR }}"
-          Start-Process -FilePath $tempExePath -ArgumentList "/VERYSILENT /DIR=`"${{ env.BOOST_INSTALL_PARENT_DIR }}`"" -Wait -NoNewWindow
-          
-          # 5. 构建实际Boost根目录路径（修正版本号处理逻辑）
-          # 先获取环境变量中的版本号，再替换点为下划线（PowerShell语法）
-          $boostVersion = $env:BOOST_VERSION  # 从环境变量获取版本号（1.89.0）
-          $boostVersionUnderscore = $boostVersion -replace '\.', '_'  # 替换为1_89_0
-          $boostVersionDir = "boost_$boostVersionUnderscore"  # 生成boost_1_89_0
-          $actualBoostRoot = "${{ env.BOOST_INSTALL_PARENT_DIR }}\$boostVersionDir"
-          Write-Host "Expected Boost root directory: $actualBoostRoot"
+          # 5. 静默安装到指定路径
+          Write-Host "Installing Boost to: ${{ env.BOOST_INSTALL_DIR }}"
+          Start-Process -FilePath $installerPath -ArgumentList "/VERYSILENT /DIR=`"${{ env.BOOST_INSTALL_DIR }}`"" -Wait -NoNewWindow
           
           # 6. 验证安装结果
-          $includePath = "$actualBoostRoot\include"
-          $libPath = "$actualBoostRoot\lib64-msvc-14.3"
+          $includePath = "${{ env.BOOST_INSTALL_DIR }}\include"
+          $libPath = "${{ env.BOOST_INSTALL_DIR }}\lib64-msvc-14.3"
           if (-not (Test-Path $includePath)) {
             throw "Boost include directory missing: $includePath"
           }
@@ -95,9 +95,10 @@ jobs:
             throw "Boost library directory missing: $libPath"
           }
           
-          # 7. 设置BOOST_ROOT环境变量
-          echo "BOOST_ROOT=$actualBoostRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Successfully set BOOST_ROOT to: $actualBoostRoot"
+          # 7. 设置BOOST_ROOT环境变量（使用正斜杠格式）
+          $boostRootPosix = "${{ env.BOOST_INSTALL_DIR }}".Replace('\', '/')
+          echo "BOOST_ROOT=$boostRootPosix" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Successfully set BOOST_ROOT to: $boostRootPosix"
         shell: pwsh
 
       - name: Configure CMake
