@@ -102,7 +102,7 @@ jobs:
       - name: 获取当前时间戳
         id: ts
         run: |
-          $utc = Get-Date -UTC -Format "yyyyMMddHHmmss"
+          $utc = (Get-Date).ToUniversalTime().ToString("yyyyMMddHHmmss")
           $sh = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
           echo "utc=$utc" >> $env:GITHUB_OUTPUT
           echo "sh=$sh" >> $env:GITHUB_OUTPUT
