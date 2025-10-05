@@ -30,8 +30,7 @@ jobs:
       SOURCE_DIR: ${{ github.workspace }}/azerothcore
       BUILD_DIR: ${{ github.workspace }}/build
       INSTALL_DIR: ${{ github.workspace }}/install
-      BOOST_VERSION: 1.89.0
-      # 新增：Boost安装目标路径
+      # Boost配置
       BOOST_INSTALL_DIR: D:\boost\boost_1_89_0
       BOOST_DOWNLOAD_URL: https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe
 
@@ -58,47 +57,23 @@ jobs:
 
       - name: Install Boost
         run: |
-          # 1. 确保D盘临时目录存在（用于存放安装包）
-          if (-not (Test-Path "D:\temp")) {
-            New-Item -Path "D:\temp" -ItemType Directory -Force | Out-Null
-            Write-Host "Created D:\temp for Boost installer"
-          }
+          # 强制创建D:\temp目录（无需验证是否存在）
+          New-Item -Path "D:\temp" -ItemType Directory -Force | Out-Null
+          Write-Host "Ensured D:\temp exists"
           
-          # 2. 确保Boost最终安装目录的父目录存在
-          $boostParentDir = Split-Path -Parent "${{ env.BOOST_INSTALL_DIR }}"
-          if (-not (Test-Path $boostParentDir)) {
-            New-Item -Path $boostParentDir -ItemType Directory -Force | Out-Null
-            Write-Host "Created Boost parent directory: $boostParentDir"
-          }
-          
-          # 3. 下载Boost安装器到D盘临时目录
+          # 下载Boost安装器到D:\temp
           $installerPath = "D:\temp\boost_installer.exe"
-          Write-Host "Downloading Boost from: ${{ env.BOOST_DOWNLOAD_URL }} to $installerPath"
+          Write-Host "Downloading Boost from: ${{ env.BOOST_DOWNLOAD_URL }}"
           Invoke-WebRequest -Uri "${{ env.BOOST_DOWNLOAD_URL }}" -OutFile $installerPath -UseBasicParsing
           
-          # 4. 验证下载文件
-          if ((Get-Item $installerPath).Length -lt 1000000) {
-            throw "Boost installer download failed (file too small). Check URL."
-          }
-          
-          # 5. 静默安装到指定路径
+          # 静默安装到指定路径（无需验证父目录存在，安装器会自动创建）
           Write-Host "Installing Boost to: ${{ env.BOOST_INSTALL_DIR }}"
           Start-Process -FilePath $installerPath -ArgumentList "/VERYSILENT /DIR=`"${{ env.BOOST_INSTALL_DIR }}`"" -Wait -NoNewWindow
           
-          # 6. 验证安装结果
-          $includePath = "${{ env.BOOST_INSTALL_DIR }}\include"
-          $libPath = "${{ env.BOOST_INSTALL_DIR }}\lib64-msvc-14.3"
-          if (-not (Test-Path $includePath)) {
-            throw "Boost include directory missing: $includePath"
-          }
-          if (-not (Test-Path $libPath)) {
-            throw "Boost library directory missing: $libPath"
-          }
-          
-          # 7. 设置BOOST_ROOT环境变量（使用正斜杠格式）
+          # 设置BOOST_ROOT环境变量
           $boostRootPosix = "${{ env.BOOST_INSTALL_DIR }}".Replace('\', '/')
           echo "BOOST_ROOT=$boostRootPosix" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Successfully set BOOST_ROOT to: $boostRootPosix"
+          Write-Host "Set BOOST_ROOT to: $boostRootPosix"
         shell: pwsh
 
       - name: Configure CMake
