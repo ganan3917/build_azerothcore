@@ -1,6 +1,6 @@
 
 
-本仓库每天凌晨3点自动编译AzerothCore-WoTLK，分为两个分支，其一带玩家机器人，用的模块则是相同：
+本仓库每天凌晨3点自动编译AzerothCore-WoTLK，分为两个分支，有玩家机器人，而模块则是相同的：
 
  - [Playerbot](https://github.com/liyunfan1223/mod-playerbots.git)
  - [azerothcore-wotlk](https://github.com/azerothcore/azerothcore-wotlk.git)
