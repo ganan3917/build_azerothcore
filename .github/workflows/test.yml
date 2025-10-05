@@ -84,7 +84,7 @@ jobs:
       - name: 打包文件
         id: package
         run: |
-         cd "/home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/"
+         cd /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/
          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./install/
          echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> "$GITHUB_OUTPUT"
 
