@@ -86,7 +86,7 @@ jobs:
         id: package
         run: |
           cd /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/
-          sudo rm -rf ./bin/lua_scripts/extensions/{*,.*}
+          sudo rm -rf ./bin/lua_scripts/extensions
           sudo tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" \
             --ignore-failed-read \
             --exclude="./lib" \
