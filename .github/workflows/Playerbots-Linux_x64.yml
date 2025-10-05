@@ -81,11 +81,12 @@ jobs:
             -DMODULES=static
           make -j$(nproc) && make install
 
-      - name: 打包文件
+      - name: 复制文件打包
         id: package
         run: |
-          cd /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/
-          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./install
+          mkdir -p /home/runner/Release
+          cp -r /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/* /home/runner/Release/
+          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" -C /home/runner Release
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
           
       - name: 创建Release并上传资产
