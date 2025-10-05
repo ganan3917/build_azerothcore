@@ -104,6 +104,7 @@ jobs:
           cd ${{ env.BUILD_DIR }}
           msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 /m
         shell: pwsh
+        
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
