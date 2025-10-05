@@ -109,10 +109,7 @@ jobs:
         id: package
         run: |
           cd D:\a\build_azerothcore\build_azerothcore\build\bin\Release\
-          sudo tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" \
-            --exclude="./.git" \
-            --exclude="./include" \
-            ./
+          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> "$GITHUB_OUTPUT"
 
       - name: 创建Release并上传
