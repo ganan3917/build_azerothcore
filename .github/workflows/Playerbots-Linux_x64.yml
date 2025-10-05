@@ -85,7 +85,8 @@ jobs:
         id: package
         run: |
           cd /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/
-          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./install/
+          chmod -r 777 ./install
+          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
           
       - name: 创建Release并上传资产
