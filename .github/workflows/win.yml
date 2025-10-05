@@ -6,7 +6,7 @@ on:
       repo:
         description: 'AzerothCore repository URL'
         required: true
-        default: 'https://github.com/azerothcore/azerothcore-wotlk.git'
+        default: 'azerothcore/azerothcore-wotlk.git'
       branch:
         description: 'Branch to build'
         required: true
