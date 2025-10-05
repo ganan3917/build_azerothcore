@@ -90,7 +90,7 @@ jobs:
 
       - name: 创建Release并上传
         # 使用维护中的release-action替代官方旧版action，解决set-output警告
-        uses: ncipollo/release-action@v1
+        uses: softprops/action-gh-release@v1
         with:
           tag: "Azerothcore-Wotlk_${{ steps.ts.outputs.utc }}"
           name: "Auto Build Azerothcore-Wotlk ${{ steps.ts.outputs.utc }}"
