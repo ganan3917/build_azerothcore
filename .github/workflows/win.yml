@@ -54,7 +54,7 @@ jobs:
           }
         shell: pwsh
 
-      - name: Install Boost to D: drive
+      - name: Install Boost
         run: |
           # 确保D盘Boost安装目录存在
           if (-not (Test-Path "${{ env.BOOST_INSTALL_DIR }}")) {
