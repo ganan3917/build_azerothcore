@@ -30,10 +30,9 @@ jobs:
       SOURCE_DIR: ${{ github.workspace }}/azerothcore
       BUILD_DIR: ${{ github.workspace }}/build
       INSTALL_DIR: ${{ github.workspace }}/install
-      BOOST_VERSION: 1.82.0
-      BOOST_INSTALL_DIR: D:\boost  # D盘安装路径
-      # 修复：使用正确的表达式语法引用环境变量 ${{ env.BOOST_VERSION }}
-      BOOST_DOWNLOAD_URL: https://downloads.sourceforge.net/project/boost/boost-binaries/${{ env.BOOST_VERSION }}/boost_${{ env.BOOST_VERSION }}-msvc-14.3-64.exe
+      BOOST_VERSION: 1.89.0
+      BOOST_INSTALL_DIR: D:\boost
+      BOOST_DOWNLOAD_URL: https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe
 
     steps:
       - name: Checkout AzerothCore
