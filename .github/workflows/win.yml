@@ -1,4 +1,4 @@
-name: Build AzerothCore-WoTLK  win
+name: Build AzerothCore-WoTLK win
 
 on:
   workflow_dispatch:
@@ -32,7 +32,7 @@ jobs:
       INSTALL_DIR: ${{ github.workspace }}/install
       BOOST_VERSION: 1.82.0
       BOOST_INSTALL_DIR: D:\boost  # D盘安装路径
-      # Boost官方64位预编译包（对应VS2022，MSVC 14.3）
+      # 修复：使用正确的表达式语法引用环境变量 ${{ env.BOOST_VERSION }}
       BOOST_DOWNLOAD_URL: https://downloads.sourceforge.net/project/boost/boost-binaries/${{ env.BOOST_VERSION }}/boost_${{ env.BOOST_VERSION }}-msvc-14.3-64.exe
 
     steps:
