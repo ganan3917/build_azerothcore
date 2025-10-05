@@ -103,31 +103,14 @@ jobs:
         id: ts
         run: |
           $utc = (Get-Date).ToUniversalTime().ToString("yyyyMMddHHmmss")
-          $sh = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
           echo "utc=$utc" >> $env:GITHUB_OUTPUT
-          echo "sh=$sh" >> $env:GITHUB_OUTPUT
-        shell: pwsh
-
-      - name: 用7zip打包文件
-        id: package
-        run: |
-          $sourceDir = "${{ env.BUILD_DIR }}\bin\Release"
-          $outputName = "acore-${{ steps.ts.outputs.utc }}.zip"
-          
-          # 确保输出目录存在
-          New-Item -Path (Split-Path $outputName -Parent) -ItemType Directory -Force | Out-Null
-          
-          # 使用7zip压缩（-tzip指定zip格式，-r递归包含所有文件）
-          7z a -tzip $outputName "$sourceDir\*"
-          
-          echo "name=$outputName" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
       - name: 创建Release并上传
         uses: ncipollo/release-action@v1
         with:
           tag: "Azerothcore-Wotlk_Win-x64_${{ steps.ts.outputs.utc }}"
-          name: "Auto Build Azerothcore-Wotlk_Winx64 ${{ steps.ts.outputs.sh }}"
+          name: "Auto Build Azerothcore-Wotlk_Winx64 ${{ steps.ts.outputs.utc }}"
           body: |
             ### Auto Build Azerothcore-Wotlk_Winx64
             - 核心分支：${{ env.AC_BRANCH }}
