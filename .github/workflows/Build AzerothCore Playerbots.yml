@@ -111,3 +111,5 @@ jobs:
           asset_path: ./${{ steps.package.outputs.name }}
           asset_name: ${{ steps.package.outputs.name }}
           asset_content_type: application/gzip
+          path: ${{ steps.package.outputs.name }}
+          retention-days: 1
