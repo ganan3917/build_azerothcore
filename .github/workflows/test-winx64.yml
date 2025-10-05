@@ -103,7 +103,7 @@ jobs:
 
           # 下载OpenSSL 3.5.3安装包
           Write-Host "开始下载OpenSSL 3.5.3..."
-          $downloadUrl = "https://slproweb.com/download/Win64OpenSSL-3_5_3.msi"
+          $downloadUrl = "https://slproweb.com/download/Win64OpenSSL-3_5_4.exe"
           try {
               Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath -UseBasicParsing
               Write-Host "OpenSSL安装包下载完成"
