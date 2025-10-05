@@ -1,0 +1,112 @@
+name: Build AzerothCore-WoTLK
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: 'AzerothCore repository URL'
+        required: true
+        default: 'https://github.com/azerothcore/azerothcore-wotlk.git'
+      branch:
+        description: 'Branch to build'
+        required: true
+        default: 'master'
+      modules:
+        description: 'Modules to include (separated by |)'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    env:
+      # 基础配置
+      AC_REPO: ${{ github.event.inputs.repo }}
+      AC_BRANCH: ${{ github.event.inputs.branch }}
+      AC_MODULES: ${{ github.event.inputs.modules }}
+      
+      # 目录设置
+      SOURCE_DIR: ${{ github.workspace }}/azerothcore
+      BUILD_DIR: ${{ github.workspace }}/build
+      INSTALL_DIR: ${{ github.workspace }}/install
+      BOOST_VERSION: 1.82.0
+
+    steps:
+      - name: Checkout AzerothCore
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.AC_REPO }}
+          ref: ${{ env.AC_BRANCH }}
+          path: ${{ env.SOURCE_DIR }}
+          submodules: 'recursive'
+
+      - name: Checkout Modules
+        if: env.AC_MODULES != ''
+        run: |
+          $modules = $env:AC_MODULES -split '\|'
+          foreach ($module in $modules) {
+            $moduleName = $module.Split('/')[-1] -replace '\.git$', ''
+            $modulePath = "${{ env.SOURCE_DIR }}\modules\$moduleName"
+            Write-Host "Cloning module: $module to $modulePath"
+            git clone $module $modulePath
+          }
+        shell: pwsh
+
+      - name: Install Boost
+        run: |
+          # 检查预安装的Boost
+          $boostPath = "C:\hostedtoolcache\windows\Boost\${{ env.BOOST_VERSION }}\x64"
+          
+          if (Test-Path $boostPath) {
+            Write-Host "Found pre-installed Boost at $boostPath"
+          } else {
+            # 如果没有预安装，则通过choco安装
+            Write-Host "Installing Boost via Chocolatey"
+            choco install boost-msvc-14.3 --version=${{ env.BOOST_VERSION }} -y
+            $boostPath = "C:\Program Files\Boost"
+          }
+          
+          # 设置BOOST_ROOT环境变量
+          echo "BOOST_ROOT=$boostPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "BOOST_ROOT set to: $boostPath"
+        shell: pwsh
+
+      - name: Configure CMake
+        run: |
+          mkdir -p ${{ env.BUILD_DIR }}
+          cd ${{ env.BUILD_DIR }}
+          
+          cmake ${{ env.SOURCE_DIR }} `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
+            -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
+            -DBOOST_ROOT="${{ env.BOOST_ROOT }}" `
+            -DTOOLS=1 `
+            -DSCRIPTS=1 `
+            -DCMAKE_BUILD_TYPE=Release
+        shell: pwsh
+
+      - name: Build with MSBuild
+        run: |
+          cd ${{ env.BUILD_DIR }}
+          msbuild AzerothCore.sln /p:Configuration=Release /p:Platform=x64 /m /p:BuildInParallel=true
+        shell: pwsh
+
+      - name: Install
+        run: |
+          cd ${{ env.BUILD_DIR }}
+          msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 /m
+        shell: pwsh
+
+      - name: Package Build
+        run: |
+          Compress-Archive -Path "${{ env.INSTALL_DIR }}\*" -DestinationPath "${{ github.workspace }}\azerothcore-build.zip"
+        shell: pwsh
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: azerothcore-wotlk-build
+          path: ${{ github.workspace }}\azerothcore-build.zip
+          retention-days: 7
