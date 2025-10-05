@@ -37,8 +37,8 @@ jobs:
       BOOST_INSTALL_DIR: D:\boost\boost_1_89_0
       BOOST_DOWNLOAD_URL: https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe
       # OpenSSL配置（使用MSI安装包）
-      OPENSSL_INSTALL_DIR: D:\OpenSSL-3.5.3
-      OPENSSL_MSI_URL: https://slproweb.com/download/Win64OpenSSL-3_5_3.msi
+      OPENSSL_INSTALL_DIR: D:\OpenSSL-3.5.4
+      OPENSSL_MSI_URL: https://slproweb.com/download/Win64OpenSSL-3_5_4.msi
 
     steps:
       - name: Checkout AzerothCore
