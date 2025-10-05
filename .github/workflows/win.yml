@@ -57,16 +57,16 @@ jobs:
 
       - name: Install Boost
         run: |
-          # 强制创建D:\temp目录（无需验证是否存在）
+          # 强制创建D:\temp目录
           New-Item -Path "D:\temp" -ItemType Directory -Force | Out-Null
           Write-Host "Ensured D:\temp exists"
           
-          # 下载Boost安装器到D:\temp
+          # 下载Boost安装器
           $installerPath = "D:\temp\boost_installer.exe"
           Write-Host "Downloading Boost from: ${{ env.BOOST_DOWNLOAD_URL }}"
           Invoke-WebRequest -Uri "${{ env.BOOST_DOWNLOAD_URL }}" -OutFile $installerPath -UseBasicParsing
           
-          # 静默安装到指定路径（无需验证父目录存在，安装器会自动创建）
+          # 静默安装
           Write-Host "Installing Boost to: ${{ env.BOOST_INSTALL_DIR }}"
           Start-Process -FilePath $installerPath -ArgumentList "/VERYSILENT /DIR=`"${{ env.BOOST_INSTALL_DIR }}`"" -Wait -NoNewWindow
           
@@ -99,12 +99,29 @@ jobs:
           msbuild AzerothCore.sln /p:Configuration=Release /p:Platform=x64 /m /p:BuildInParallel=true
         shell: pwsh
 
-      - name: 打包文件
+      - name: 获取当前时间戳
+        id: ts
+        run: |
+          $utc = Get-Date -UTC -Format "yyyyMMddHHmmss"
+          $sh = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+          echo "utc=$utc" >> $env:GITHUB_OUTPUT
+          echo "sh=$sh" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: 用7zip打包文件
         id: package
         run: |
-          cd D:\a\build_azerothcore\build_azerothcore\build\bin\Release\
-          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./
-          echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> "$GITHUB_OUTPUT"
+          $sourceDir = "${{ env.BUILD_DIR }}\bin\Release"
+          $outputName = "acore-${{ steps.ts.outputs.utc }}.zip"
+          
+          # 确保输出目录存在
+          New-Item -Path (Split-Path $outputName -Parent) -ItemType Directory -Force | Out-Null
+          
+          # 使用7zip压缩（-tzip指定zip格式，-r递归包含所有文件）
+          7z a -tzip $outputName "$sourceDir\*"
+          
+          echo "name=$outputName" >> $env:GITHUB_OUTPUT
+        shell: pwsh
 
       - name: 创建Release并上传
         uses: ncipollo/release-action@v1
@@ -113,17 +130,16 @@ jobs:
           name: "Auto Build Azerothcore-Wotlk_Winx64 ${{ steps.ts.outputs.sh }}"
           body: |
             ### Auto Build Azerothcore-Wotlk_Winx64
-            - 核心分支：${{ env.ACORE_BRANCH }}
-            - 成功模块：${{ steps.modules.outputs.success }}
-            - 失败模块：${{ steps.modules.outputs.failure || '无' }}
+            - 核心分支：${{ env.AC_BRANCH }}
+            - 包含模块：${{ env.AC_MODULES || '无' }}
           artifacts: "${{ steps.package.outputs.name }}"
           token: ${{ secrets.BUILD_AZEROTHCORE }}
           replacesArtifacts: true
 
-      - name: 保留最新1个Release
+      - name: 保留最新3个Release
         uses: dev-drprasad/delete-older-releases@v0.3.4
         with:
-          keep_latest: 1
+          keep_latest: 3
           delete_tags: true
         env:
           GITHUB_TOKEN: ${{ secrets.BUILD_AZEROTHCORE }}
