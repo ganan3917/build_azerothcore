@@ -1,4 +1,4 @@
-name: Build AzerothCore-WoTLK
+name: Build AzerothCore-WoTLK win
 
 on:
   workflow_dispatch:
