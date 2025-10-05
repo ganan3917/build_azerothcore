@@ -92,10 +92,10 @@ jobs:
       - name: 创建Release并上传资产
         uses: ncipollo/release-action@v1
         with:
-         tag: "AzerothCore_Playerbots_Linux-x64${{ steps.ts.outputs.date }}"
-         name: "AzerothCore_Playerbots_Linux-x64${{ steps.ts.outputs.date }}"
+         tag: "Azerothcore_Playerbots_Linux-x64_${{ steps.ts.outputs.utc }}"
+         name: "Azerothcore_Playerbots_Linux-x64_${{ steps.ts.outputs.utc }}"
          body: |
-              ### AzerothCore_Playerbots_Linux-x64
+              ### Azerothcore_Playerbots_Linux-x64
          artifacts: "./${{ steps.package.outputs.name }}"
          token: ${{ secrets.BUILD_AZEROTHCORE }}
          replacesArtifacts: true
