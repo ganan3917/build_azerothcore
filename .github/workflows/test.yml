@@ -84,11 +84,8 @@ jobs:
       - name: 打包文件
         id: package
         run: |
-         # 切换到安装目录的父目录，确保打包路径正确
-         cd "${{ env.BUILD_DIR }}"
-         # 打包安装目录（稳定文件），而非整个构建目录
+         cd "/home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/"
          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./install/
-         # 输出打包文件名
          echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> "$GITHUB_OUTPUT"
 
       - name: 创建Release并上传
