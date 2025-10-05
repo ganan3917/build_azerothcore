@@ -17,10 +17,7 @@ jobs:
       BUILD_TYPE: "MinSizeRel"
       MODULES_INPUT: |
               https://github.com/azerothcore/mod-eluna.git master
-              https://github.com/azerothcore/mod-learn-spells.git master
-              https://github.com/azerothcore/mod-autobalance.git master
-              https://github.com/azerothcore/mod-auto-revive.git master
-              
+              https://github.com/azerothcore/mod-autobalance.git master  
     steps:
       - name: 安装依赖
         run: |
@@ -81,7 +78,6 @@ jobs:
         id: package
         run: |
           cd /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install
-          sudo chmod 777 /install
           tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
 
