@@ -119,11 +119,11 @@ jobs:
         id: package
         run: |
           $zipName = "Release_${{ steps.ts.outputs.utc }}.zip"
-          $sourceDir = "${{ env.BUILD_DIR }}\bin\Release\*"  # 注意末尾的*表示包含目录内所有内容
+          $sourceDir = "${{ env.BUILD_DIR }}\bin\Release\*"
           $7zipPath = "C:\Program Files\7-Zip\7z.exe"
           
           Write-Host "使用7zip打包：$sourceDir -> $zipName"
-          & $7zipPath a -tzip $zipName $sourceDir -mx=5  # -mx=5 是中等压缩级别，平衡速度和大小
+          & $7zipPath a -tzip $zipName $sourceDir -mx=5
           
           # 验证压缩包生成
           if (-not (Test-Path $zipName)) {
@@ -142,7 +142,6 @@ jobs:
             ### Auto Build Azerothcore-Wotlk_Winx64
             - 核心分支：${{ env.AC_BRANCH }}
             - 包含模块：${{ env.AC_MODULES || '无' }}
-            - 打包内容：build/bin/Release目录
           artifacts: "${{ steps.package.outputs.name }}"
           token: ${{ secrets.BUILD_AZEROTHCORE }}
           replacesArtifacts: true
