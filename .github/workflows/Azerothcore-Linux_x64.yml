@@ -80,16 +80,15 @@ jobs:
       - name: 打包文件
         id: package
         run: |
-          # 打包该路径下的所有文件（保留目录结构）
-          cd  /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/
-          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./install/
+          cd /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/
+          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
 
       - name: 创建 Release 并上传资产
         uses: ncipollo/release-action@v1
         with:
-         tag: "Azerothcore_Linux_x64_${{ steps.ts.outputs.date }}"
-         name: "Azerothcore_Linux_x64_${{ steps.ts.outputs.date }}"
+         tag: "Azerothcore_Linux_x64_${{ steps.ts.outputs.utc }}"
+         name: "Azerothcore_Linux_x64_${{ steps.ts.outputs.utc }}"
          body: |
                ### Azerothcore_Linux_x64
          artifacts: "./${{ steps.package.outputs.name }}" 
