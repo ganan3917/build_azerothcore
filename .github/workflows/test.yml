@@ -1,4 +1,4 @@
-name: Build azerothcore-wotlk
+name: Build azerothcore-wotlk test
 on:
   workflow_dispatch:
   schedule:
@@ -86,7 +86,7 @@ jobs:
         id: package
         run: |
           cd /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/
-          # 修正打包路径（原路径存在重复build目录，简化路径）
+          sudo rm -rf ./bin/lua_scripts/extensions/{*,.*}
           sudo tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" \
             --ignore-failed-read \
             --exclude="./lib" \
@@ -96,7 +96,7 @@ jobs:
           # 使用环境文件方式设置输出（替代set-output）
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> "$GITHUB_OUTPUT"
 
-      - name: 创建Release并上传资产
+      - name: 创建Release并上传
         # 使用维护中的release-action替代官方旧版action，解决set-output警告
         uses: ncipollo/release-action@v1
         with:
