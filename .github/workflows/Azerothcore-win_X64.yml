@@ -139,10 +139,10 @@ jobs:
       - name: 创建Release并上传
         uses: ncipollo/release-action@v1.14.0
         with:
-          tag: "Azerothcore-Wotlk_Win-x64_${{ steps.ts.outputs.utc }}"
-          name: "Azerothcore-Wotlk_Winx64_${{ steps.ts.outputs.utc }}"
+          tag: "Azerothcore_playerbots-win_X64_${{ steps.ts.outputs.utc }}"
+          name: "Azerothcore_playerbots-win_X64_${{ steps.ts.outputs.utc }}"
           body: |
-            ### Azerothcore-Wotlk Playerbot winX64
+            ### Azerothcore_playerbots-win_X64
           artifacts: "${{ steps.package.outputs.name }}"
           token: ${{ secrets.BUILD_AZEROTHCORE }}
           replacesArtifacts: true
