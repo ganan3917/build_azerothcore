@@ -30,8 +30,8 @@ jobs:
       SOURCE_DIR: ${{ github.workspace }}/azerothcore
       BUILD_DIR: ${{ github.workspace }}/build
       INSTALL_DIR: ${{ github.workspace }}/install
-      BOOST_VERSION: 1.89.0
-      BOOST_INSTALL_PARENT_DIR: D:\boost_parent  # 父目录
+      BOOST_VERSION: 1.89.0  # 注意：这里的版本号需要和下载URL匹配
+      BOOST_INSTALL_PARENT_DIR: D:\boost_parent
       BOOST_DOWNLOAD_URL: https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe
 
     steps:
@@ -77,8 +77,11 @@ jobs:
           Write-Host "Installing Boost to parent directory: ${{ env.BOOST_INSTALL_PARENT_DIR }}"
           Start-Process -FilePath $tempExePath -ArgumentList "/VERYSILENT /DIR=`"${{ env.BOOST_INSTALL_PARENT_DIR }}`"" -Wait -NoNewWindow
           
-          # 5. 构建实际Boost根目录路径（处理版本号子目录）
-          $boostVersionDir = "boost_$(${{ env.BOOST_VERSION }} -replace '\.', '_')"
+          # 5. 构建实际Boost根目录路径（修正版本号处理逻辑）
+          # 先获取环境变量中的版本号，再替换点为下划线（PowerShell语法）
+          $boostVersion = $env:BOOST_VERSION  # 从环境变量获取版本号（1.89.0）
+          $boostVersionUnderscore = $boostVersion -replace '\.', '_'  # 替换为1_89_0
+          $boostVersionDir = "boost_$boostVersionUnderscore"  # 生成boost_1_89_0
           $actualBoostRoot = "${{ env.BOOST_INSTALL_PARENT_DIR }}\$boostVersionDir"
           Write-Host "Expected Boost root directory: $actualBoostRoot"
           
