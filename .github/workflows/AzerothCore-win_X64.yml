@@ -1,4 +1,4 @@
-name: Build AzerothCore winX64
+name: AzerothCore-win_X64
 
 on:
   workflow_dispatch:
