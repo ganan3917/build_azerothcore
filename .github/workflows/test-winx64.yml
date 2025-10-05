@@ -8,12 +8,10 @@ on:
         required: true
         default: 'liyunfan1223/azerothcore-wotlk'
       branch:
-        description: 'Branch'
         required: true
         default: 'Playerbot'
       modules:
         description: 'Modules (separated by |)'
-        required: false
         default: 'https://github.com/liyunfan1223/mod-playerbots.git|https://github.com/azerothcore/mod-eluna.git|https://github.com/azerothcore/mod-learn-spells.git|https://github.com/azerothcore/mod-autobalance.git|https://github.com/azerothcore/mod-auto-revive.git'
   
   schedule:
@@ -24,7 +22,7 @@ jobs:
     runs-on: windows-latest
     
     env:
-      # 基础配置
+      # 核心配置
       AC_REPO: ${{ github.event.inputs.repo }}
       AC_BRANCH: ${{ github.event.inputs.branch }}
       AC_MODULES: ${{ github.event.inputs.modules }}
@@ -32,12 +30,12 @@ jobs:
       # 目录设置
       SOURCE_DIR: ${{ github.workspace }}/azerothcore
       BUILD_DIR: ${{ github.workspace }}/build
-      INSTALL_DIR: ${{ github.workspace }}/install
-      # Boost配置
-      BOOST_INSTALL_DIR: D:\boost\boost_1_89_0
-      BOOST_DOWNLOAD_URL: https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe
-      # OpenSSL配置（使用MSI安装包）
-      OPENSSL_INSTALL_DIR: D:\OpenSSL-3.5.4
+      TEMP_DIR: D:\temp  # 统一临时目录
+      
+      # 依赖配置（统一D盘安装）
+      BOOST_INSTALL_DIR: D:\boost\1.89.0
+      BOOST_MSI_URL: https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe
+      OPENSSL_INSTALL_DIR: D:\openssl\3.5.4
       OPENSSL_MSI_URL: https://slproweb.com/download/Win64OpenSSL-3_5_4.msi
 
     steps:
@@ -55,97 +53,73 @@ jobs:
           $modules = $env:AC_MODULES -split '\|'
           foreach ($module in $modules) {
             $moduleName = $module.Split('/')[-1] -replace '\.git$', ''
-            $modulePath = "${{ env.SOURCE_DIR }}\modules\$moduleName"
-            Write-Host "Cloning module: $module to $modulePath"
-            git clone $module $modulePath
+            git clone $module "${{ env.SOURCE_DIR }}\modules\$moduleName"
           }
         shell: pwsh
 
-      - name: Install Boost
+      - name: 安装依赖（Boost + OpenSSL）
         run: |
-          # 强制创建D:\temp目录
-          New-Item -Path "D:\temp" -ItemType Directory -Force | Out-Null
-          Write-Host "Ensured D:\temp exists"
+          # 创建统一临时目录
+          New-Item -Path "${{ env.TEMP_DIR }}" -ItemType Directory -Force | Out-Null
           
-          # 下载Boost安装器
-          $installerPath = "D:\temp\boost_installer.exe"
-          Write-Host "Downloading Boost from: ${{ env.BOOST_DOWNLOAD_URL }}"
-          Invoke-WebRequest -Uri "${{ env.BOOST_DOWNLOAD_URL }}" -OutFile $installerPath -UseBasicParsing
-          
-          # 静默安装
-          Write-Host "Installing Boost to: ${{ env.BOOST_INSTALL_DIR }}"
-          Start-Process -FilePath $installerPath -ArgumentList "/VERYSILENT /DIR=`"${{ env.BOOST_INSTALL_DIR }}`"" -Wait -NoNewWindow
-          
-          # 设置BOOST_ROOT环境变量
-          $boostRootPosix = "${{ env.BOOST_INSTALL_DIR }}".Replace('\', '/')
-          echo "BOOST_ROOT=$boostRootPosix" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Set BOOST_ROOT to: $boostRootPosix"
-        shell: pwsh
-
-      - name: 处理OpenSSL（MSI安装方式）
-        run: |
-          Write-Host "检查已安装的OpenSSL..."
-          $opensslPackages = Get-Package -Name "*OpenSSL*" -ErrorAction SilentlyContinue
-          if ($opensslPackages) {
-            Write-Host "发现已安装的OpenSSL版本，开始卸载..."
-            foreach ($pkg in $opensslPackages) {
-              Write-Host "卸载: $($pkg.Name) v$($pkg.Version)"
-              Uninstall-Package -Name $pkg.Name -Force -ErrorAction Stop
+          # 定义通用安装函数
+          function Install-Dependency {
+            param(
+              [string]$Name,
+              [string]$MsiUrl,
+              [string]$InstallDir,
+              [string]$TempDir
+            )
+            
+            $installerName = $MsiUrl.Split('/')[-1]
+            $installerPath = "$TempDir\$installerName"
+            
+            # 下载安装包
+            Write-Host "下载 $Name: $MsiUrl"
+            Invoke-WebRequest -Uri $MsiUrl -OutFile $installerPath -UseBasicParsing
+            
+            # 静默安装
+            Write-Host "安装 $Name 到 $InstallDir"
+            if ($Name -eq "Boost") {
+              # Boost使用自身的静默参数
+              Start-Process -FilePath $installerPath -ArgumentList "/VERYSILENT /DIR=`"$InstallDir`"" -Wait -NoNewWindow
             }
-            Write-Host "OpenSSL卸载完成"
-          }
-          else {
-            Write-Host "未发现已安装的OpenSSL"
-          }
-
-          # 创建临时目录
-          $tempDir = "D:\temp"
-          $msiPath = "$tempDir\Win64OpenSSL-3_5_3.msi"
-          New-Item -Path $tempDir -ItemType Directory -Force | Out-Null
-
-          # 下载OpenSSL MSI安装包
-          Write-Host "开始下载OpenSSL MSI: ${{ env.OPENSSL_MSI_URL }}"
-          try {
-              Invoke-WebRequest -Uri "${{ env.OPENSSL_MSI_URL }}" -OutFile $msiPath -UseBasicParsing
-              Write-Host "OpenSSL MSI下载完成: $msiPath"
-          }
-          catch {
-              Write-Error "下载OpenSSL MSI失败: $_"
-              exit 1
-          }
-
-          # 使用MSI静默安装（MSI标准静默参数）
-          Write-Host "开始静默安装OpenSSL到 ${{ env.OPENSSL_INSTALL_DIR }}..."
-          try {
-              # MSI静默安装参数：/qn（完全静默）、/i（安装）、INSTALLDIR指定路径
+            else {
+              # OpenSSL使用MSI标准参数
               Start-Process -FilePath "msiexec.exe" `
-                -ArgumentList "/i `"$msiPath`" INSTALLDIR=`"${{ env.OPENSSL_INSTALL_DIR }}`" /qn /norestart" `
-                -Wait -NoNewWindow -PassThru
-              Write-Host "OpenSSL MSI安装完成"
-          }
-          catch {
-              Write-Error "OpenSSL MSI安装失败: $_"
+                -ArgumentList "/i `"$installerPath`" INSTALLDIR=`"$InstallDir`" /qn /norestart" `
+                -Wait -NoNewWindow
+            }
+            
+            # 验证安装
+            if (-not (Test-Path $InstallDir)) {
+              Write-Error "$Name 安装失败，目录不存在: $InstallDir"
               exit 1
+            }
+            Write-Host "$Name 安装成功"
           }
-
+          
+          # 安装Boost
+          Install-Dependency -Name "Boost" `
+            -MsiUrl "${{ env.BOOST_MSI_URL }}" `
+            -InstallDir "${{ env.BOOST_INSTALL_DIR }}" `
+            -TempDir "${{ env.TEMP_DIR }}"
+          
+          # 安装OpenSSL
+          Install-Dependency -Name "OpenSSL" `
+            -MsiUrl "${{ env.OPENSSL_MSI_URL }}" `
+            -InstallDir "${{ env.OPENSSL_INSTALL_DIR }}" `
+            -TempDir "${{ env.TEMP_DIR }}"
+          
           # 配置环境变量
-          Write-Host "配置OpenSSL环境变量..."
-          $binPath = "${{ env.OPENSSL_INSTALL_DIR }}\bin"
-          # 添加到当前会话的PATH
-          $env:Path += ";$binPath"
-          # 添加到系统环境变量（仅对当前工作流有效）
-          echo "OPENSSL_ROOT_DIR=${{ env.OPENSSL_INSTALL_DIR }}" | Out-File -FilePath $env:GITHUB_ENV -Append
-          echo "PATH=$env:Path" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-          # 验证安装
-          try {
-              openssl version
-              Write-Host "OpenSSL配置成功"
-          }
-          catch {
-              Write-Error "OpenSSL验证失败，可能安装或配置有误"
-              exit 1
-          }
+          $env:Path += ";${{ env.OPENSSL_INSTALL_DIR }}\bin"
+          echo "BOOST_ROOT=${{ env.BOOST_INSTALL_DIR }}".Replace('\', '/') | Out-File $env:GITHUB_ENV -Append
+          echo "OPENSSL_ROOT_DIR=${{ env.OPENSSL_INSTALL_DIR }}" | Out-File $env:GITHUB_ENV -Append
+          echo "PATH=$env:Path" | Out-File $env:GITHUB_ENV -Append
+          
+          # 验证环境
+          openssl version
+          Write-Host "依赖环境配置完成"
         shell: pwsh
   
       - name: Configure CMake
@@ -156,7 +130,7 @@ jobs:
           cmake ${{ env.SOURCE_DIR }} `
             -G "Visual Studio 17 2022" `
             -A x64 `
-            -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/install" `
             -DBOOST_ROOT="${{ env.BOOST_ROOT }}" `
             -DTOOLS=1 `
             -DSCRIPTS=static
@@ -168,52 +142,34 @@ jobs:
       - name: Build with MSBuild
         run: |
           cd ${{ env.BUILD_DIR }}
-          msbuild AzerothCore.sln /p:Configuration=Release /p:Platform=x64 /m /p:BuildInParallel=true
+          msbuild AzerothCore.sln /p:Configuration=Release /p:Platform=x64 /m
         shell: pwsh
 
-      - name: 获取当前时间戳
-        id: ts
+      - name: 打包与发布
         run: |
           $utc = (Get-Date).ToUniversalTime().ToString("yyyyMMddHHmmss")
-          echo "utc=$utc" >> $env:GITHUB_OUTPUT
-        shell: pwsh
-
-      - name: 验证Release目录存在
-        run: |
-          $releaseDir = "${{ env.BUILD_DIR }}\bin\Release"
+          $zipName = "Release_$utc.zip"
+          $releaseDir = "${{ env.BUILD_DIR }}\bin\Release\*"
+          
+          # 验证构建结果
           if (-not (Test-Path $releaseDir)) {
-            Write-Error "Release目录不存在：$releaseDir"
+            Write-Error "Release目录不存在"
             exit 1
           }
-          Write-Host "确认Release目录存在：$releaseDir"
-        shell: pwsh
-
-      - name: 使用7zip打包Release目录
+          
+          # 打包
+          & "C:\Program Files\7-Zip\7z.exe" a -tzip $zipName $releaseDir -mx=5
+          echo "zipName=$zipName" >> $env:GITHUB_OUTPUT
+          echo "utc=$utc" >> $env:GITHUB_OUTPUT
         id: package
-        run: |
-          $zipName = "Release_${{ steps.ts.outputs.utc }}.zip"
-          $sourceDir = "${{ env.BUILD_DIR }}\bin\Release\*"
-          $7zipPath = "C:\Program Files\7-Zip\7z.exe"
-          
-          Write-Host "使用7zip打包：$sourceDir -> $zipName"
-          & $7zipPath a -tzip $zipName $sourceDir -mx=5
-          
-          # 验证压缩包生成
-          if (-not (Test-Path $zipName)) {
-            Write-Error "打包失败，未生成$zipName"
-            exit 1
-          }
-          echo "name=$zipName" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
-      - name: 创建Release并上传
+      - name: 创建Release
         uses: ncipollo/release-action@v1.14.0
         with:
-          tag: "Azerothcore_playerbots-win_X64_${{ steps.ts.outputs.utc }}"
-          name: "Azerothcore_playerbots-win_X64_${{ steps.ts.outputs.utc }}"
-          body: |
-            ### Azerothcore_playerbots-win_X64
-          artifacts: "${{ steps.package.outputs.name }}"
+          tag: "Azerothcore_playerbots-win_X64_${{ steps.package.outputs.utc }}"
+          name: "Build ${{ steps.package.outputs.utc }}"
+          artifacts: "${{ steps.package.outputs.zipName }}"
           token: ${{ secrets.BUILD_AZEROTHCORE }}
           replacesArtifacts: true
 
