@@ -1,4 +1,4 @@
-name: Playerbots Linux X86-64
+name: Playerbots-Linux_X86-64
 
 on:
   workflow_dispatch:
