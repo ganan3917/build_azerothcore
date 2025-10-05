@@ -117,7 +117,29 @@ jobs:
           }
           Write-Host "确认Release目录存在：$releaseDir"
         shell: pwsh
-
+        
+      - name: 复制依赖 DLL 到 Release 目录
+        run: |
+             $dlls = @("libcrypto-3-x64.dll", "libmysql.dll", "libssl-3-x64.dll")
+             $targetDir = "${{ env.BUILD_DIR }}\bin\Release"
+    
+             foreach ($dll in $dlls) {
+             Write-Host "正在搜索 $dll..."
+              $foundPath = Get-ChildItem -Path "C:\" -Filter $dll -Recurse -File -ErrorAction SilentlyContinue `
+              | Where-Object { $_.DirectoryName -notlike "C:\Windows\WinSxS\*" -and $_.DirectoryName -notlike "C:\ProgramData\Package Cache\*" } `
+              | Select-Object -First 1 -ExpandProperty FullName
+      
+              if ($foundPath) {
+              Write-Host "找到 $dll: $foundPath"
+               Copy-Item -Path $foundPath -Destination $targetDir -Force
+              Write-Host "已复制 $dll 到 $targetDir"
+                    }
+              else {
+                 Write-Warning "未找到 $dll，请检查是否已安装相关依赖"
+                    }
+                   }
+               shell: pwsh
+      
       - name: 使用7zip打包Release目录
         id: package
         run: |
