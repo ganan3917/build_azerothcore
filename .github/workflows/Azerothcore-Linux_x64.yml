@@ -74,16 +74,12 @@ jobs:
             -DMODULES=static
           make -j$(nproc) && make install
           
-      - name: 复制文件到Release目录并打包
+      - name: 复制文件打包
         id: package
         run: |
-          # 创建Release目录（注意：GitHub Actions中/home/runner是用户目录，直接用/home可能权限不足，建议用/home/runner/Release）
           mkdir -p /home/runner/Release
-          # 复制安装目录的所有文件到Release目录
-          cp -r "${{ env.INSTALL_DIR }}"/* /home/runner/Release/
-          # 打包Release目录（使用绝对路径确保正确）
+          cp -r /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/* /home/runner/Release/
           tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" -C /home/runner Release
-          # 输出打包文件名
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
           
       - name: 创建 Release 并上传资产
