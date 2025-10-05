@@ -39,7 +39,7 @@ jobs:
       - name: 生成时间
         id: ts
         run: |
-          echo "utc=$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+          echo "utc=$(date -u +%Y%m%d)" >> $GITHUB_OUTPUT
 
       - name: 克隆仓库
         run: |
