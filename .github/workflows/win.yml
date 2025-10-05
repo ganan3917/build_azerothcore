@@ -1,4 +1,4 @@
-name: Build AzerothCore-WoTLK
+name: Build AzerothCore-WoTLK win
 
 on:
   workflow_dispatch:
@@ -31,7 +31,8 @@ jobs:
       BUILD_DIR: ${{ github.workspace }}/build
       INSTALL_DIR: ${{ github.workspace }}/install
       BOOST_VERSION: 1.82.0
-      BOOST_INSTALL_DIR: D:\boost  # Boost安装到D盘根目录下的boost文件夹
+      BOOST_TARGET_DIR: D:\boost  # D盘实际存储路径
+      BOOST_DEFAULT_PATH: C:\Program Files\Boost  # Chocolatey默认安装路径
 
     steps:
       - name: Checkout AzerothCore
@@ -56,26 +57,38 @@ jobs:
 
       - name: Install Boost
         run: |
-          # 确保D盘Boost安装目录存在
-          if (-not (Test-Path "${{ env.BOOST_INSTALL_DIR }}")) {
-            New-Item -Path "${{ env.BOOST_INSTALL_DIR }}" -ItemType Directory -Force | Out-Null
-            Write-Host "Created Boost install directory: ${{ env.BOOST_INSTALL_DIR }}"
+          # 1. 确保D盘目标目录存在
+          if (-not (Test-Path "${{ env.BOOST_TARGET_DIR }}")) {
+            New-Item -Path "${{ env.BOOST_TARGET_DIR }}" -ItemType Directory -Force | Out-Null
+            Write-Host "Created D: drive Boost directory: ${{ env.BOOST_TARGET_DIR }}"
           }
 
-          # 通过Chocolatey安装Boost到D盘指定目录
-          Write-Host "Installing Boost ${{ env.BOOST_VERSION }} to ${{ env.BOOST_INSTALL_DIR }}"
-          choco install boost-msvc-14.3 --version=${{ env.BOOST_VERSION }} `
-            --install-directory="${{ env.BOOST_INSTALL_DIR }}" `
-            -y --no-progress
-
-          # 验证安装是否成功
-          if (-not (Test-Path "${{ env.BOOST_INSTALL_DIR }}\include")) {
-            throw "Boost installation failed - include directory not found"
+          # 2. 删除默认路径（如果存在），避免冲突
+          if (Test-Path "${{ env.BOOST_DEFAULT_PATH }}") {
+            Remove-Item -Path "${{ env.BOOST_DEFAULT_PATH }}" -Recurse -Force
+            Write-Host "Removed existing default Boost directory"
           }
 
-          # 设置BOOST_ROOT环境变量（指向实际安装路径）
-          echo "BOOST_ROOT=${{ env.BOOST_INSTALL_DIR }}" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "BOOST_ROOT set to: ${{ env.BOOST_INSTALL_DIR }}"
+          # 3. 创建符号链接：将默认安装路径指向D盘目录
+          # 需要管理员权限（GitHub Actions Windows环境默认具备）
+          New-Item -ItemType SymbolicLink `
+            -Path "${{ env.BOOST_DEFAULT_PATH }}" `
+            -Target "${{ env.BOOST_TARGET_DIR }}" `
+            -Force | Out-Null
+          Write-Host "Created symlink: ${{ env.BOOST_DEFAULT_PATH }} -> ${{ env.BOOST_TARGET_DIR }}"
+
+          # 4. 正常安装Boost（不指定目录，利用符号链接映射到D盘）
+          Write-Host "Installing Boost ${{ env.BOOST_VERSION }} via Chocolatey"
+          choco install boost-msvc-14.3 --version=${{ env.BOOST_VERSION }} -y --no-progress
+
+          # 5. 验证安装（检查D盘实际目录是否有文件）
+          if (-not (Test-Path "${{ env.BOOST_TARGET_DIR }}\include")) {
+            throw "Boost installation failed - include directory not found in D: drive"
+          }
+
+          # 6. 设置BOOST_ROOT（指向符号链接路径，兼容编译系统）
+          echo "BOOST_ROOT=${{ env.BOOST_DEFAULT_PATH }}" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "BOOST_ROOT set to: ${{ env.BOOST_DEFAULT_PATH }} (symlinked to D: drive)"
         shell: pwsh
 
       - name: Configure CMake
@@ -87,7 +100,7 @@ jobs:
             -G "Visual Studio 17 2022" `
             -A x64 `
             -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
-            -DBOOST_ROOT="${{ env.BOOST_ROOT }}" ` 
+            -DBOOST_ROOT="${{ env.BOOST_ROOT }}" `
             -DTOOLS=1 `
             -DSCRIPTS=1 `
             -DCMAKE_BUILD_TYPE=Release
