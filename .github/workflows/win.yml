@@ -1,4 +1,4 @@
-name: Build AzerothCore-WoTLK win
+name: Build AzerothCore-WoTLK  win
 
 on:
   workflow_dispatch:
@@ -31,8 +31,9 @@ jobs:
       BUILD_DIR: ${{ github.workspace }}/build
       INSTALL_DIR: ${{ github.workspace }}/install
       BOOST_VERSION: 1.82.0
-      BOOST_TARGET_DIR: D:\boost  # D盘实际存储路径
-      BOOST_DEFAULT_PATH: C:\Program Files\Boost  # Chocolatey默认安装路径
+      BOOST_INSTALL_DIR: D:\boost  # D盘安装路径
+      # Boost官方64位预编译包（对应VS2022，MSVC 14.3）
+      BOOST_DOWNLOAD_URL: https://downloads.sourceforge.net/project/boost/boost-binaries/${{ env.BOOST_VERSION }}/boost_${{ env.BOOST_VERSION }}-msvc-14.3-64.exe
 
     steps:
       - name: Checkout AzerothCore
@@ -57,38 +58,37 @@ jobs:
 
       - name: Install Boost
         run: |
-          # 1. 确保D盘目标目录存在
-          if (-not (Test-Path "${{ env.BOOST_TARGET_DIR }}")) {
-            New-Item -Path "${{ env.BOOST_TARGET_DIR }}" -ItemType Directory -Force | Out-Null
-            Write-Host "Created D: drive Boost directory: ${{ env.BOOST_TARGET_DIR }}"
+          # 1. 确保D盘安装目录存在
+          if (-not (Test-Path "${{ env.BOOST_INSTALL_DIR }}")) {
+            New-Item -Path "${{ env.BOOST_INSTALL_DIR }}" -ItemType Directory -Force | Out-Null
+            Write-Host "Created D: drive Boost directory: ${{ env.BOOST_INSTALL_DIR }}"
           }
 
-          # 2. 删除默认路径（如果存在），避免冲突
-          if (Test-Path "${{ env.BOOST_DEFAULT_PATH }}") {
-            Remove-Item -Path "${{ env.BOOST_DEFAULT_PATH }}" -Recurse -Force
-            Write-Host "Removed existing default Boost directory"
+          # 2. 下载Boost官方64位预编译包（VS2022兼容）
+          $tempExePath = "$env:TEMP\boost_installer.exe"
+          Write-Host "Downloading Boost from: ${{ env.BOOST_DOWNLOAD_URL }}"
+          Invoke-WebRequest -Uri "${{ env.BOOST_DOWNLOAD_URL }}" -OutFile $tempExePath -UseBasicParsing
+
+          # 3. 验证下载文件是否有效（不是HTML）
+          $fileType = (Get-Item $tempExePath).Length
+          if ($fileType -lt 1000000) {  # 小于1MB的大概率是错误页面
+            throw "Boost installer download failed (file too small). Check URL."
           }
 
-          # 3. 创建符号链接：将默认安装路径指向D盘目录
-          # 需要管理员权限（GitHub Actions Windows环境默认具备）
-          New-Item -ItemType SymbolicLink `
-            -Path "${{ env.BOOST_DEFAULT_PATH }}" `
-            -Target "${{ env.BOOST_TARGET_DIR }}" `
-            -Force | Out-Null
-          Write-Host "Created symlink: ${{ env.BOOST_DEFAULT_PATH }} -> ${{ env.BOOST_TARGET_DIR }}"
+          # 4. 静默安装到D盘（Boost安装器支持的静默参数）
+          Write-Host "Installing Boost to ${{ env.BOOST_INSTALL_DIR }}"
+          Start-Process -FilePath $tempExePath -ArgumentList "/VERYSILENT /DIR=`"${{ env.BOOST_INSTALL_DIR }}`"" -Wait -NoNewWindow
 
-          # 4. 正常安装Boost（不指定目录，利用符号链接映射到D盘）
-          Write-Host "Installing Boost ${{ env.BOOST_VERSION }} via Chocolatey"
-          choco install boost-msvc-14.3 --version=${{ env.BOOST_VERSION }} -y --no-progress
-
-          # 5. 验证安装（检查D盘实际目录是否有文件）
-          if (-not (Test-Path "${{ env.BOOST_TARGET_DIR }}\include")) {
-            throw "Boost installation failed - include directory not found in D: drive"
+          # 5. 验证安装结果（检查关键目录）
+          $includePath = "${{ env.BOOST_INSTALL_DIR }}\include"
+          $libPath = "${{ env.BOOST_INSTALL_DIR }}\lib64-msvc-14.3"
+          if (-not (Test-Path $includePath) -or -not (Test-Path $libPath)) {
+            throw "Boost installation failed - missing include/lib directory. Check install log."
           }
 
-          # 6. 设置BOOST_ROOT（指向符号链接路径，兼容编译系统）
-          echo "BOOST_ROOT=${{ env.BOOST_DEFAULT_PATH }}" | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "BOOST_ROOT set to: ${{ env.BOOST_DEFAULT_PATH }} (symlinked to D: drive)"
+          # 6. 设置BOOST_ROOT环境变量
+          echo "BOOST_ROOT=${{ env.BOOST_INSTALL_DIR }}" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "BOOST_ROOT set to: ${{ env.BOOST_INSTALL_DIR }}"
         shell: pwsh
 
       - name: Configure CMake
