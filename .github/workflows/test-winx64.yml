@@ -62,7 +62,7 @@ jobs:
           # 创建统一临时目录
           New-Item -Path "${{ env.TEMP_DIR }}" -ItemType Directory -Force | Out-Null
           
-          # 定义通用安装函数
+          # 定义通用安装函数（修复变量解析问题）
           function Install-Dependency {
             param(
               [string]$Name,
@@ -74,12 +74,14 @@ jobs:
             $installerName = $MsiUrl.Split('/')[-1]
             $installerPath = "$TempDir\$installerName"
             
+            # 修复：使用 ${} 明确变量边界
+            Write-Host "下载 ${Name}: $MsiUrl"
+            
             # 下载安装包
-            Write-Host "下载 $Name: $MsiUrl"
             Invoke-WebRequest -Uri $MsiUrl -OutFile $installerPath -UseBasicParsing
             
             # 静默安装
-            Write-Host "安装 $Name 到 $InstallDir"
+            Write-Host "安装 ${Name} 到 $InstallDir"
             if ($Name -eq "Boost") {
               # Boost使用自身的静默参数
               Start-Process -FilePath $installerPath -ArgumentList "/VERYSILENT /DIR=`"$InstallDir`"" -Wait -NoNewWindow
@@ -93,10 +95,10 @@ jobs:
             
             # 验证安装
             if (-not (Test-Path $InstallDir)) {
-              Write-Error "$Name 安装失败，目录不存在: $InstallDir"
+              Write-Error "${Name} 安装失败，目录不存在: $InstallDir"
               exit 1
             }
-            Write-Host "$Name 安装成功"
+            Write-Host "${Name} 安装成功"
           }
           
           # 安装Boost
