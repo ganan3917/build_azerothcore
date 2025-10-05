@@ -98,7 +98,6 @@ jobs:
           cd ${{ env.BUILD_DIR }}
           msbuild AzerothCore.sln /p:Configuration=Release /p:Platform=x64 /m /p:BuildInParallel=true
         shell: pwsh
-
       - name: 获取当前时间戳
         id: ts
         run: |
@@ -106,8 +105,36 @@ jobs:
           echo "utc=$utc" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
+      - name: 验证Release目录存在
+        run: |
+          $releaseDir = "${{ env.BUILD_DIR }}\bin\Release"
+          if (-not (Test-Path $releaseDir)) {
+            Write-Error "Release目录不存在：$releaseDir"
+            exit 1
+          }
+          Write-Host "确认Release目录存在：$releaseDir"
+        shell: pwsh
+
+      - name: 使用7zip打包Release目录
+        id: package
+        run: |
+          $zipName = "Release_${{ steps.ts.outputs.utc }}.zip"
+          $sourceDir = "${{ env.BUILD_DIR }}\bin\Release\*"  # 注意末尾的*表示包含目录内所有内容
+          $7zipPath = "C:\Program Files\7-Zip\7z.exe"
+          
+          Write-Host "使用7zip打包：$sourceDir -> $zipName"
+          & $7zipPath a -tzip $zipName $sourceDir -mx=5  # -mx=5 是中等压缩级别，平衡速度和大小
+          
+          # 验证压缩包生成
+          if (-not (Test-Path $zipName)) {
+            Write-Error "打包失败，未生成$zipName"
+            exit 1
+          }
+          echo "name=$zipName" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
       - name: 创建Release并上传
-        uses: ncipollo/release-action@v1
+        uses: ncipollo/release-action@v1.14.0
         with:
           tag: "Azerothcore-Wotlk_Win-x64_${{ steps.ts.outputs.utc }}"
           name: "Auto Build Azerothcore-Wotlk_Winx64 ${{ steps.ts.outputs.utc }}"
@@ -115,11 +142,12 @@ jobs:
             ### Auto Build Azerothcore-Wotlk_Winx64
             - 核心分支：${{ env.AC_BRANCH }}
             - 包含模块：${{ env.AC_MODULES || '无' }}
+            - 打包内容：build/bin/Release目录
           artifacts: "${{ steps.package.outputs.name }}"
           token: ${{ secrets.BUILD_AZEROTHCORE }}
           replacesArtifacts: true
 
-      - name: 保留最新3个Release
+      - name: 保留最新1个Release
         uses: dev-drprasad/delete-older-releases@v0.3.4
         with:
           keep_latest: 3
