@@ -99,12 +99,6 @@ jobs:
           msbuild AzerothCore.sln /p:Configuration=Release /p:Platform=x64 /m /p:BuildInParallel=true
         shell: pwsh
 
-      - name: Install
-        run: |
-          cd ${{ env.BUILD_DIR }}
-          msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 /m
-        shell: pwsh
-        
       - name: 打包文件
         id: package
         run: |
