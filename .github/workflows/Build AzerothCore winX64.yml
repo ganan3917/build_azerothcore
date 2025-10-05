@@ -1,9 +1,8 @@
-name: Build AzerothCore-WoTLK winX64
+name: Build AzerothCore winX64
 
 on:
   workflow_dispatch:
-
-  inputs:
+    inputs:
       repo:
         description: 'AzerothCore repository URL'
         required: true
@@ -16,6 +15,7 @@ on:
         description: 'Modules (separated by |)'
         required: false
         default: 'https://github.com/liyunfan1223/mod-playerbots.git|https://github.com/azerothcore/mod-eluna.git|https://github.com/azerothcore/mod-learn-spells.git|https://github.com/azerothcore/mod-autobalance.git|https://github.com/azerothcore/mod-auto-revive.git'
+  
   schedule:
     - cron: 0 19 * * *
     
