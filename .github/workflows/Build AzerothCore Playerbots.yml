@@ -94,7 +94,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.BUILD_AZEROTHCORE }}
         with:
-          tag_name: AzerothCore-Playerbots_${{ steps.ts.outputs.utc }}
+          tag_name: AzerothCore-Playerbots_${{ steps.ts.outputs.date }}
           release_name: Auto Build AzerothCore Playerbots ${{ steps.ts.outputs.sh }} 
           body: |
             ### Auto Build AzerothCore Playerbots
