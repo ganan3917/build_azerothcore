@@ -90,6 +90,9 @@ jobs:
             -DSCRIPTS=static
         shell: pwsh
 
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
       - name: Build with MSBuild
         run: |
           cd ${{ env.BUILD_DIR }}
@@ -101,12 +104,6 @@ jobs:
           cd ${{ env.BUILD_DIR }}
           msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 /m
         shell: pwsh
-
-      - name: Package Build
-        run: |
-          Compress-Archive -Path "${{ env.INSTALL_DIR }}\*" -DestinationPath "${{ github.workspace }}\azerothcore-build.zip"
-        shell: pwsh
-
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
