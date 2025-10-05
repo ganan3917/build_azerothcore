@@ -105,9 +105,34 @@ jobs:
           msbuild INSTALL.vcxproj /p:Configuration=Release /p:Platform=x64 /m
         shell: pwsh
         
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
+      - name: 打包文件
+        id: package
+        run: |
+          cd D:\a\build_azerothcore\build_azerothcore\build\bin\Release\
+          sudo tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" \
+            --exclude="./.git" \
+            --exclude="./include" \
+            ./
+          echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: 创建Release并上传
+        uses: ncipollo/release-action@v1
         with:
-          name: azerothcore-wotlk-build
-          path: ${{ github.workspace }}\install\azerothcore-build.zip
-          retention-days: 7
+          tag: "Azerothcore-Wotlk_Win-x64_${{ steps.ts.outputs.utc }}"
+          name: "Auto Build Azerothcore-Wotlk_Winx64 ${{ steps.ts.outputs.sh }}"
+          body: |
+            ### Auto Build Azerothcore-Wotlk_Winx64
+            - 核心分支：${{ env.ACORE_BRANCH }}
+            - 成功模块：${{ steps.modules.outputs.success }}
+            - 失败模块：${{ steps.modules.outputs.failure || '无' }}
+          artifacts: "${{ steps.package.outputs.name }}"
+          token: ${{ secrets.BUILD_AZEROTHCORE }}
+          replacesArtifacts: true
+
+      - name: 保留最新1个Release
+        uses: dev-drprasad/delete-older-releases@v0.3.4
+        with:
+          keep_latest: 1
+          delete_tags: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.BUILD_AZEROTHCORE }}
