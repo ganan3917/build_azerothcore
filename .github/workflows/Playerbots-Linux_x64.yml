@@ -85,7 +85,7 @@ jobs:
         id: package
         run: |
           cd /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/
-          chmod -r 777 ./install
+          sudo chmod -r 777 ./install
           tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
           
