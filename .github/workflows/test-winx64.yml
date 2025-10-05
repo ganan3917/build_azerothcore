@@ -33,9 +33,9 @@ jobs:
       TEMP_DIR: D:\temp  # 统一临时目录
       
       # 依赖配置（统一D盘安装）
-      BOOST_INSTALL_DIR: D:\boost\1.89.0
+      BOOST_INSTALL_DIR: D:\boost\1_89_0
       BOOST_MSI_URL: https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe
-      OPENSSL_INSTALL_DIR: D:\openssl\3.5.4
+      OPENSSL_INSTALL_DIR: D:\openssl\3_5_4
       OPENSSL_MSI_URL: https://slproweb.com/download/Win64OpenSSL-3_5_4.msi
 
     steps:
@@ -89,7 +89,7 @@ jobs:
             else {
               # OpenSSL使用MSI标准参数
               Start-Process -FilePath "msiexec.exe" `
-                -ArgumentList "/i `"$installerPath`" INSTALLDIR=`"$InstallDir`" /qn /norestart" `
+                -ArgumentList "/i `"$installerPath`" INSTALLDIR=`"$InstallDir`" ALLUSERS=1 /qn /norestart" `
                 -Wait -NoNewWindow
             }
             
