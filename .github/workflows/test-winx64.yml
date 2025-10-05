@@ -97,12 +97,12 @@ jobs:
 
           # 创建临时目录
           $tempDir = "D:\temp"
-          $installerPath = "$tempDir\openssl-3.5.3-installer.exe"
-          $installDir = "D:\OpenSSL-3.5.3"
+          $installerPath = "$tempDir\openssl-3.5.4-installer.exe"
+          $installDir = "D:\OpenSSL-3.5.4"
           New-Item -Path $tempDir -ItemType Directory -Force | Out-Null
 
-          # 下载OpenSSL 3.5.3安装包
-          Write-Host "开始下载OpenSSL 3.5.3..."
+          # 下载OpenSSL 3.5.4安装包
+          Write-Host "开始下载OpenSSL 3.5.4..."
           $downloadUrl = "https://slproweb.com/download/Win64OpenSSL-3_5_4.exe"
           try {
               Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath -UseBasicParsing
