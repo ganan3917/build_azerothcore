@@ -36,6 +36,9 @@ jobs:
       # Boost配置
       BOOST_INSTALL_DIR: D:\boost\boost_1_89_0
       BOOST_DOWNLOAD_URL: https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe
+      # OpenSSL配置（使用MSI安装包）
+      OPENSSL_INSTALL_DIR: D:\OpenSSL-3.5.3
+      OPENSSL_MSI_URL: https://slproweb.com/download/Win64OpenSSL-3_5_3.msi
 
     steps:
       - name: Checkout AzerothCore
@@ -79,7 +82,7 @@ jobs:
           Write-Host "Set BOOST_ROOT to: $boostRootPosix"
         shell: pwsh
 
-      - name: 处理OpenSSL
+      - name: 处理OpenSSL（MSI安装方式）
         run: |
           Write-Host "检查已安装的OpenSSL..."
           $opensslPackages = Get-Package -Name "*OpenSSL*" -ErrorAction SilentlyContinue
@@ -97,40 +100,41 @@ jobs:
 
           # 创建临时目录
           $tempDir = "D:\temp"
-          $installerPath = "$tempDir\openssl-3.5.4-installer.exe"
-          $installDir = "D:\OpenSSL-3.5.4"
+          $msiPath = "$tempDir\Win64OpenSSL-3_5_3.msi"
           New-Item -Path $tempDir -ItemType Directory -Force | Out-Null
 
-          # 下载OpenSSL 3.5.4安装包
-          Write-Host "开始下载OpenSSL 3.5.4..."
-          $downloadUrl = "https://slproweb.com/download/Win64OpenSSL-3_5_4.exe"
+          # 下载OpenSSL MSI安装包
+          Write-Host "开始下载OpenSSL MSI: ${{ env.OPENSSL_MSI_URL }}"
           try {
-              Invoke-WebRequest -Uri $downloadUrl -OutFile $installerPath -UseBasicParsing
-              Write-Host "OpenSSL安装包下载完成"
+              Invoke-WebRequest -Uri "${{ env.OPENSSL_MSI_URL }}" -OutFile $msiPath -UseBasicParsing
+              Write-Host "OpenSSL MSI下载完成: $msiPath"
           }
           catch {
-              Write-Error "下载OpenSSL失败: $_"
+              Write-Error "下载OpenSSL MSI失败: $_"
               exit 1
           }
 
-          # 静默安装OpenSSL
-          Write-Host "开始静默安装OpenSSL到 $installDir..."
+          # 使用MSI静默安装（MSI标准静默参数）
+          Write-Host "开始静默安装OpenSSL到 ${{ env.OPENSSL_INSTALL_DIR }}..."
           try {
-              Start-Process -FilePath $installerPath -ArgumentList "/S /D=$installDir" -Wait -NoNewWindow
-              Write-Host "OpenSSL安装完成"
+              # MSI静默安装参数：/qn（完全静默）、/i（安装）、INSTALLDIR指定路径
+              Start-Process -FilePath "msiexec.exe" `
+                -ArgumentList "/i `"$msiPath`" INSTALLDIR=`"${{ env.OPENSSL_INSTALL_DIR }}`" /qn /norestart" `
+                -Wait -NoNewWindow -PassThru
+              Write-Host "OpenSSL MSI安装完成"
           }
           catch {
-              Write-Error "OpenSSL安装失败: $_"
+              Write-Error "OpenSSL MSI安装失败: $_"
               exit 1
           }
 
           # 配置环境变量
           Write-Host "配置OpenSSL环境变量..."
-          $binPath = "$installDir\bin"
+          $binPath = "${{ env.OPENSSL_INSTALL_DIR }}\bin"
           # 添加到当前会话的PATH
           $env:Path += ";$binPath"
           # 添加到系统环境变量（仅对当前工作流有效）
-          echo "OPENSSL_ROOT_DIR=$installDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "OPENSSL_ROOT_DIR=${{ env.OPENSSL_INSTALL_DIR }}" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "PATH=$env:Path" | Out-File -FilePath $env:GITHUB_ENV -Append
 
           # 验证安装
