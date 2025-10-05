@@ -1,4 +1,4 @@
-name: AzerothCore-win_X64
+name: Azerothcore-win_X64
 
 on:
   workflow_dispatch:
@@ -140,16 +140,14 @@ jobs:
         uses: ncipollo/release-action@v1.14.0
         with:
           tag: "Azerothcore-Wotlk_Win-x64_${{ steps.ts.outputs.utc }}"
-          name: "Auto Build Azerothcore-Wotlk_Winx64 ${{ steps.ts.outputs.utc }}"
+          name: "Azerothcore-Wotlk_Winx64_${{ steps.ts.outputs.utc }}"
           body: |
-            ### Auto Build Azerothcore-Wotlk_Winx64
-            - 核心分支：${{ env.AC_BRANCH }}
-            - 包含模块：${{ env.AC_MODULES || '无' }}
+            ### Azerothcore-Wotlk Playerbot winX64
           artifacts: "${{ steps.package.outputs.name }}"
           token: ${{ secrets.BUILD_AZEROTHCORE }}
           replacesArtifacts: true
 
-      - name: 保留最新1个Release
+      - name: 保留最新3个Release
         uses: dev-drprasad/delete-older-releases@v0.3.4
         with:
           keep_latest: 3
