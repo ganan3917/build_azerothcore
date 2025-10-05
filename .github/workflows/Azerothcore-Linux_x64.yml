@@ -90,10 +90,10 @@ jobs:
       - name: 创建 Release 并上传资产
         uses: ncipollo/release-action@v1
         with:
-         tag: "Azerothcore-Linux_x64_${{ steps.ts.outputs.date }}"
-         name: "Azerothcore-Linux_x64_${{ steps.ts.outputs.date }}"
+         tag: "Azerothcore_Linux_x64_${{ steps.ts.outputs.date }}"
+         name: "Azerothcore_Linux_x64_${{ steps.ts.outputs.date }}"
          body: |
-               ### Azerothcore-Linux_x64
+               ### Azerothcore_Linux_x64
          artifacts: "./${{ steps.package.outputs.name }}" 
          artifactContentType: "application/gzip"
          token: ${{ secrets.BUILD_AZEROTHCORE }}
