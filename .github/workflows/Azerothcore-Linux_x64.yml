@@ -77,9 +77,7 @@ jobs:
       - name: 打包文件
         id: package
         run: |
-           sudo chown -R runner:runner "${{ env.INSTALL_DIR }}"
-           sudo chmod -R 777 "${{ env.INSTALL_DIR }}"
-           tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" -C "${{ env.INSTALL_DIR }}" .
+           tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install
            echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
 
       - name: 创建 Release 并上传资产
