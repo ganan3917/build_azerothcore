@@ -97,8 +97,8 @@ jobs:
          body: |
               ### AzerothCore_Playerbots_Linux-x64
          artifacts: "./${{ steps.package.outputs.name }}"
-         replaceArtifacts: true
          token: ${{ secrets.BUILD_AZEROTHCORE }}
+         replacesArtifacts: true
 
       - name: 保留最新3个Release
         uses: dev-drprasad/delete-older-releases@v0.3.4
