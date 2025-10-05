@@ -60,7 +60,7 @@ jobs:
               success+=("$name（$branch）")
             else
               failure+=("$name（$branch）")
-              echo "⚠️ 模块 $name 克隆失败，将继续构建"
+              echo "模块 $name 克隆失败，将继续构建"
             fi
           done <<< "${{ env.MODULES_INPUT }}"
           # 使用环境文件方式设置输出（替代set-output）
