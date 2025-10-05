@@ -101,10 +101,11 @@ jobs:
           cd ${{ env.BUILD_DIR }}
           msbuild AzerothCore.sln /p:Configuration=Release /p:Platform=x64 /m /p:BuildInParallel=true
         shell: pwsh
-      - name: 获取当前时间戳
+        
+      - name: 获取时间
         id: ts
         run: |
-          $utc = (Get-Date).ToUniversalTime().ToString("yyyyMMddHHmmss")
+          $utc = (Get-Date).ToUniversalTime().ToString("yyyyMMdd")
           echo "utc=$utc" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
@@ -130,12 +131,12 @@ jobs:
               | Select-Object -First 1 -ExpandProperty FullName
       
               if ($foundPath) {
-              Write-Host "找到 $dll: $foundPath"
-               Copy-Item -Path $foundPath -Destination $targetDir -Force
-              Write-Host "已复制 $dll 到 $targetDir"
+              Write-Host "找到 ${dll}: ${foundPath}"
+               Copy-Item -Path ${foundPath｝ -Destination ${targetDir} -Force
+              Write-Host "已复制 ${dll} 到 ${targetDir}"
                     }
               else {
-                 Write-Warning "未找到 $dll，请检查是否已安装相关依赖"
+                 Write-Warning "未找到 ${dll}，请检查是否已安装相关依赖"
                     }
                    }
                shell: pwsh
