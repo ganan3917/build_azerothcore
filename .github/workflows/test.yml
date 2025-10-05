@@ -39,7 +39,6 @@ jobs:
         run: |
           # 使用环境文件方式设置输出（替代set-output）
           echo "utc=$(date -u +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
-          echo "sh=$(TZ='Asia/Shanghai' date +%Y%m%d%H%M%S)" >> "$GITHUB_OUTPUT"
 
       - name: 克隆仓库
         run: |
@@ -85,14 +84,8 @@ jobs:
       - name: 打包文件
         id: package
         run: |
-          cd /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/
-          sudo rm -rf ./bin/lua_scripts/extensions
-          sudo tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" \
-            --ignore-failed-read \
-            --exclude="./lib" \
-            --exclude="./include" \
-            --exclude="./.git" \
-            ./
+          cd /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/
+          sudo tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" ./
           # 使用环境文件方式设置输出（替代set-output）
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> "$GITHUB_OUTPUT"
 
@@ -101,7 +94,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           tag: "Azerothcore-Wotlk_${{ steps.ts.outputs.utc }}"
-          name: "Auto Build Azerothcore-Wotlk ${{ steps.ts.outputs.sh }}"
+          name: "Auto Build Azerothcore-Wotlk ${{ steps.ts.outputs.utc }}"
           body: |
             ### Auto Build Azerothcore-Wotlk
             - 核心分支：${{ env.ACORE_BRANCH }}
