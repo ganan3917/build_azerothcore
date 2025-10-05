@@ -1,9 +1,8 @@
 
 
-本仓库每天凌晨3点自动编译AzerothCore-WoTLK，分为两个分支，有玩家机器人，而模块则是相同的：
+每天凌晨3点自动编译AzerothCore-wotlk，带玩家机器人模块。
 
- - [Playerbot](https://github.com/liyunfan1223/mod-playerbots.git)
- - [azerothcore-wotlk](https://github.com/azerothcore/azerothcore-wotlk.git)
+ - [Playerbot](https://github.com/liyunfan1223/azerothcore-wotlk)
 
 支持系统：Linux_x64、win_x64
 
@@ -13,10 +12,9 @@ AzerothCore-WoTLK通用地图数据：[data](https://github.com/ganan3917/azerot
 
 ---
 
-This repository automatically compiles AzerothCore-WoTLK at 3:00 AM every day. The compilation covers two branches: one of the branches includes player bots, while both branches use the same set of modules.
+Automatically compile AzerothCore-wotlk with the player bot module at 3:00 AM every day.
 
- - [Playerbot](https://github.com/liyunfan1223/mod-playerbots.git)
- - [azerothcore-wotlk](https://github.com/azerothcore/azerothcore-wotlk.git)
+ - [Playerbot](https://github.com/liyunfan1223/azerothcore-wotlk)
 
 Supported Systems：Linux_x64、win_x64
 
