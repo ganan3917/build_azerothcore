@@ -18,7 +18,7 @@ This repository automatically compiles AzerothCore-WoTLK at 3:00 AM every day. T
  - [Playerbot](https://github.com/liyunfan1223/mod-playerbots.git)
  - [azerothcore-wotlk](https://github.com/azerothcore/azerothcore-wotlk.git)
 
-Supported Systems：Linux x86-64   
+Supported Systems：Linux_x64   win_x64
 
 download: [Releases](https://github.com/ganan3917/build_azerothcore/releases)
 
