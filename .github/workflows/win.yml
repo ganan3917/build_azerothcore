@@ -87,7 +87,7 @@ jobs:
             -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
             -DBOOST_ROOT="${{ env.BOOST_ROOT }}" `
             -DTOOLS=1 `
-            -DSCRIPTS=1 `
+            -DSCRIPTS=static
             -DCMAKE_BUILD_TYPE=Release
         shell: pwsh
 
