@@ -40,7 +40,6 @@ jobs:
         id: ts
         run: |
           echo "utc=$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
-          echo "sh=$(TZ='Asia/Shanghai' date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
 
       - name: 克隆仓库
         run: |
@@ -96,9 +95,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.BUILD_AZEROTHCORE }}
         with:
           tag_name: AzerothCore-Playerbots_${{ steps.ts.outputs.date }}
-          release_name: Auto Build AzerothCore Playerbots ${{ steps.ts.outputs.sh }} 
+          release_name: AzerothCore-Playerbots_${{ steps.ts.outputs.date }} 
           body: |
-            ### Auto Build AzerothCore Playerbots
+            ### AzerothCore Playerbots Linux x64
             - 核心分支：${{ env.ACORE_BRANCH }}
             - 成功模块：${{ steps.modules.outputs.success }}
             - 失败模块：${{ steps.modules.outputs.failure || '无' }}
