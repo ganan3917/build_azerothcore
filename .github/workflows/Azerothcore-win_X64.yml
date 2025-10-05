@@ -21,7 +21,7 @@ on:
     
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-server2025
     
     env:
       # 基础配置
