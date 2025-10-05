@@ -1,21 +1,24 @@
-name: Build AzerothCore-WoTLK win
+name: Build AzerothCore-WoTLK winX64
 
 on:
   workflow_dispatch:
-    inputs:
+
+  inputs:
       repo:
         description: 'AzerothCore repository URL'
         required: true
-        default: 'azerothcore/azerothcore-wotlk.git'
+        default: 'liyunfan1223/azerothcore-wotlk'
       branch:
-        description: 'Branch to build'
+        description: 'Branch'
         required: true
-        default: 'master'
+        default: 'Playerbot'
       modules:
-        description: 'Modules to include (separated by |)'
+        description: 'Modules (separated by |)'
         required: false
-        default: ''
-
+        default: 'https://github.com/liyunfan1223/mod-playerbots.git|https://github.com/azerothcore/mod-eluna.git|https://github.com/azerothcore/mod-learn-spells.git|https://github.com/azerothcore/mod-autobalance.git|https://github.com/azerothcore/mod-auto-revive.git'
+  schedule:
+    - cron: 0 19 * * *
+    
 jobs:
   build:
     runs-on: windows-latest
