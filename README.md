@@ -13,7 +13,7 @@
 
 AzerothCore-WoTLK通用地图数据：[data](https://github.com/ganan3917/azerothcore-data.git)
 
-mysql 8.0.4
+mysql 8.0.43
 
 ---
 
@@ -27,4 +27,4 @@ download: [Releases](https://github.com/ganan3917/build_azerothcore/releases)
 
 AzerothCore-WoTLK General Map Data: [data](https://github.com/ganan3917/azerothcore-data.git)
 
-mysql 8.0.4
+mysql 8.0.43
