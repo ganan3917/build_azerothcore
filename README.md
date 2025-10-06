@@ -1,4 +1,4 @@
-
+[![Azerothcore-Linux_x64](https://github.com/ganan3917/build_azerothcore/actions/workflows/Azerothcore-Linux_x64.yml/badge.svg?event=workflow_dispatch)](https://github.com/ganan3917/build_azerothcore/actions/workflows/Azerothcore-Linux_x64.yml)
 
 每天凌晨3点自动编译AzerothCore-wotlk仓库，带玩家机器人。
 
