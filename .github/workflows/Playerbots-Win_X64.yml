@@ -128,10 +128,10 @@ jobs:
       - name: 创建Release并上传
         uses: ncipollo/release-action@v1.14.0
         with:
-          tag: "Playerbots_win_X64_${{ steps.ts.outputs.utc }}"
-          name: "Playerbots_win_X64_${{ steps.ts.outputs.utc }}"
+          tag: "Playerbots_Win_X64_${{ steps.ts.outputs.utc }}"
+          name: "Playerbots_Win_X64_${{ steps.ts.outputs.utc }}"
           body: |
-            ### Azerothcore_playerbots_win_X64
+            ### Azerothcore_Playerbots_Win_X64
           artifacts: "${{ steps.package.outputs.name }}"
           token: ${{ secrets.BUILD_AZEROTHCORE }}
           replacesArtifacts: true
