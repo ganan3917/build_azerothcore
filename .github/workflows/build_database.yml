@@ -1,0 +1,78 @@
+name: build_Database
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 19 * * *
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    env:
+      ROOT_DIR: ./azerothcore
+      MODULES_DIR: ./azerothcore/modules
+      ACORE_REPO: "https://github.com/liyunfan1223/azerothcore-wotlk.git"
+      ACORE_BRANCH: "Playerbot"
+      MODULES_INPUT: |
+        https://github.com/liyunfan1223/mod-playerbots.git master
+    steps:
+      - name: 生成时间
+        id: ts
+        run: |
+          echo "utc=$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+          
+      - name: 克隆仓库
+        run: |
+          git clone --branch "${{ env.ACORE_BRANCH }}" "${{ env.ACORE_REPO }}" "${{ env.ROOT_DIR }}"
+          cd "${{ env.ROOT_DIR }}" && git submodule update --init --recursive
+
+      - name: 拉取模块
+        id: modules
+        run: |
+          mkdir -p "${{ env.MODULES_DIR }}"
+          success=()
+          failure=()
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            repo=$(echo "$line" | awk '{print $1}')
+            branch=$(echo "$line" | awk '{print $2}')
+            name=$(basename "$repo" .git)
+            if git clone --depth 1 --branch "$branch" "$repo" "${{ env.MODULES_DIR }}/$name"; then
+              success+=("$name（$branch）")
+            else
+              failure+=("$name（$branch）")
+              echo "⚠️ 模块 $name 克隆失败，将继续构建"
+            fi
+          done <<< "${{ env.MODULES_INPUT }}"
+          echo "success=$(IFS=';'; echo "${success[*]}")" >> $GITHUB_OUTPUT
+          echo "failure=$(IFS=';'; echo "${failure[*]}")" >> $GITHUB_OUTPUT
+          
+          
+      - name: 复制文件打包
+        id: package
+        run: |
+          mkdir -p /home/runner/Release
+          mkdir -p /home/runner/Release/Playerbots
+          cp -r /home/runner/work/azerothcore/data/* /home/runner/Release/
+          cp -r /home/runner/work/azerothcore/modules/mod-playerbots/data/* /home/runner/Release/Playerbots
+          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" -C /home/runner Release
+          echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
+          
+      - name: 创建Release并上传资产
+        uses: ncipollo/release-action@v1
+        with:
+         tag: "Azerothcore_Playerbots_Database_${{ steps.ts.outputs.utc }}"
+         name: "Azerothcore_Playerbots_Database_${{ steps.ts.outputs.utc }}"
+         body: |
+              ### Azerothcore_Playerbots_Database
+         artifacts: "./${{ steps.package.outputs.name }}"
+         token: ${{ secrets.BUILD_AZEROTHCORE }}
+         replacesArtifacts: true
+
+      - name: 保留最新3个Release
+        uses: dev-drprasad/delete-older-releases@v0.3.4
+        with:
+           keep_latest: 3
+           delete_tags: true
+        env:
+         GITHUB_TOKEN: ${{ secrets.BUILD_AZEROTHCORE }}
