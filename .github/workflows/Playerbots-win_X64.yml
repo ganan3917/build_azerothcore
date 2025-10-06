@@ -1,5 +1,5 @@
 
-name: test-win_X64
+name: Playerbots-win_X64
 
 on:
   workflow_dispatch:
