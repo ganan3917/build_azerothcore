@@ -1,3 +1,4 @@
+
 name: test-win_X64
 
 on:
@@ -6,7 +7,7 @@ on:
       repo:
         description: 'AzerothCore repository URL'
         required: true
-        default: 'azerothcore/azerothcore-wotlk'
+        default: 'liyunfan1223/azerothcore-wotlk'
       branch:
         description: 'Branch'
         required: true
@@ -14,7 +15,7 @@ on:
       modules:
         description: 'Modules (separated by |)'
         required: false
-        default: ''
+        default: 'https://github.com/liyunfan1223/mod-playerbots.git|https://github.com/azerothcore/mod-eluna.git|https://github.com/azerothcore/mod-learn-spells.git|https://github.com/azerothcore/mod-autobalance.git|https://github.com/azerothcore/mod-auto-revive.git'
   
   schedule:
     - cron: 0 19 * * *
@@ -29,24 +30,15 @@ jobs:
       AC_BRANCH: ${{ github.event.inputs.branch }}
       AC_MODULES: ${{ github.event.inputs.modules }}
       
-      # 目录设置（修改为D盘绝对路径）
-      SOURCE_DIR: D:\azerothcore
-      BUILD_DIR: D:\build
-      INSTALL_DIR: D:\install
+      # 目录设置
+      SOURCE_DIR: ${{ github.workspace }}/azerothcore
+      BUILD_DIR: ${{ github.workspace }}/build
+      INSTALL_DIR: ${{ github.workspace }}/install
       # Boost配置
       BOOST_INSTALL_DIR: D:\boost\boost_1_89_0
       BOOST_DOWNLOAD_URL: https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe
 
     steps:
-      - name: 确保D盘目录存在
-        run: |
-          # 提前创建所有需要的目录，避免后续步骤因目录不存在报错
-          New-Item -Path "D:\azerothcore" -ItemType Directory -Force | Out-Null
-          New-Item -Path "D:\build" -ItemType Directory -Force | Out-Null
-          New-Item -Path "D:\install" -ItemType Directory -Force | Out-Null
-          Write-Host "已创建D盘所需目录"
-        shell: pwsh
-
       - name: Checkout AzerothCore
         uses: actions/checkout@v4
         with:
@@ -62,8 +54,6 @@ jobs:
           foreach ($module in $modules) {
             $moduleName = $module.Split('/')[-1] -replace '\.git$', ''
             $modulePath = "${{ env.SOURCE_DIR }}\modules\$moduleName"
-            # 确保模块目录存在
-            New-Item -Path $modulePath -ItemType Directory -Force | Out-Null
             Write-Host "Cloning module: $module to $modulePath"
             git clone $module $modulePath
           }
@@ -92,8 +82,7 @@ jobs:
 
       - name: Configure CMake
         run: |
-          # 确保构建目录存在
-          New-Item -Path ${{ env.BUILD_DIR }} -ItemType Directory -Force | Out-Null
+          mkdir -p ${{ env.BUILD_DIR }}
           cd ${{ env.BUILD_DIR }}
           
           cmake ${{ env.SOURCE_DIR }} `
@@ -102,7 +91,11 @@ jobs:
             -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
             -DBOOST_ROOT="${{ env.BOOST_ROOT }}" `
             -DTOOLS=1 `
-            -DSCRIPTS=static
+            -DSCRIPTS=static `
+            # -MYSQL_EXECUTABLE:FILEPATH=C:/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe `
+            # -MYSQL_INCLUDE_DIR:PATH=C:/Program Files/MySQL/MySQL Server 8.0/include `
+            # -MYSQL_LIBRARY:FILEPATH=C:/Program Files/MySQL/MySQL Server 8.0/lib/libmysql.lib `
+            # -OPENSSL_INCLUDE_DIR:PATH=C:/Program Files/OpenSSL-Win64/include `
         shell: pwsh
 
       - name: Setup MSBuild
