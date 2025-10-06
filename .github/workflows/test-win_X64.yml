@@ -112,54 +112,15 @@ jobs:
           $utc = (Get-Date).ToUniversalTime().ToString("yyyyMMddHHmmss")
           echo "utc=$utc" >> $env:GITHUB_OUTPUT
         shell: pwsh
-
-      - name: 验证Release目录存在
-        run: |
-          $releaseDir = "${{ env.BUILD_DIR }}\bin\Release"
-          if (-not (Test-Path $releaseDir)) {
-            Write-Error "Release目录不存在：$releaseDir"
-            exit 1
-          }
-          Write-Host "确认Release目录存在：$releaseDir"
-        shell: pwsh
-        
-      - name: 复制依赖 DLL 到 Release 目录
-        run: |
-             $dlls = @("libcrypto-3-x64.dll", "libmysql.dll", "libssl-3-x64.dll")
-             $targetDir = "${{ env.BUILD_DIR }}\bin\Release"
-    
-             foreach ($dll in $dlls) {
-             Write-Host "正在搜索 $dll..."
-              $foundPath = Get-ChildItem -Path "C:\" -Filter $dll -Recurse -File -ErrorAction SilentlyContinue `
-              | Where-Object { $_.DirectoryName -notlike "C:\Windows\WinSxS\*" -and $_.DirectoryName -notlike "C:\ProgramData\Package Cache\*" } `
-              | Select-Object -First 1 -ExpandProperty FullName
       
-              if ($foundPath) {
-              Write-Host "找到 ${dll}: ${foundPath}"
-               Copy-Item -Path $foundPath -Destination $targetDir -Force
-              Write-Host "已复制 ${dll} 到 ${targetDir}"
-                    }
-              else {
-                 Write-Warning "未找到 ${dll}，请检查是否已安装相关依赖"
-                    }
-                   }
-               shell: pwsh
-      
-      - name: 使用7zip打包Release目录
+      - name: 打包目录
         id: package
         run: |
           $zipName = "Release_${{ steps.ts.outputs.utc }}.zip"
           $sourceDir = "${{ env.BUILD_DIR }}\bin\Release\*"
           $7zipPath = "C:\Program Files\7-Zip\7z.exe"
-          
           Write-Host "使用7zip打包：$sourceDir -> $zipName"
           & $7zipPath a -tzip $zipName $sourceDir -mx=5
-          
-          # 验证压缩包生成
-          if (-not (Test-Path $zipName)) {
-            Write-Error "打包失败，未生成$zipName"
-            exit 1
-          }
           echo "name=$zipName" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
