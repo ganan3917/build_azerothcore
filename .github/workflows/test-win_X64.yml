@@ -90,7 +90,11 @@ jobs:
             -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
             -DBOOST_ROOT="${{ env.BOOST_ROOT }}" `
             -DTOOLS=1 `
-            -DSCRIPTS=static
+            -DSCRIPTS=static `
+            -MYSQL_EXECUTABLE:FILEPATH=C:/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe `
+            -MYSQL_INCLUDE_DIR:PATH=C:/Program Files/MySQL/MySQL Server 8.0/include `
+            -MYSQL_LIBRARY:FILEPATH=C:/Program Files/MySQL/MySQL Server 8.0/lib/libmysql.lib `
+            -OPENSSL_INCLUDE_DIR:PATH=C:/Program Files/OpenSSL-Win64/include `
         shell: pwsh
 
       - name: Setup MSBuild
