@@ -1,4 +1,4 @@
-name: build_Database
+name: Build_Database
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
     - cron: 0 19 * * *
 
 jobs:
-  build:
+  Build_Database:
     runs-on: ubuntu-22.04
     env:
       ROOT_DIR: ./azerothcore
@@ -53,8 +53,8 @@ jobs:
         run: |
           mkdir -p /home/runner/Release
           mkdir -p /home/runner/Release/Playerbots
-          cp -r /home/runner/work/azerothcore/data/* /home/runner/Release/
-          cp -r /home/runner/work/azerothcore/modules/mod-playerbots/data/* /home/runner/Release/Playerbots
+          cp -r "${{ env.ROOT_DIR }}"/data/* /home/runner/Release/
+          cp -r "${{ env.ROOT_DIR }}"/modules/mod-playerbots/data/* /home/runner/Release/Playerbots
           tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" -C /home/runner Release
           echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
           
