@@ -15,7 +15,7 @@ on:
       modules:
         description: 'Modules (separated by |)'
         required: false
-        default: 'https://github.com/liyunfan1223/mod-playerbots.git master|https://github.com/azerothcore/mod-eluna.git master|https://github.com/azerothcore/mod-learn-spells.git master|https://github.com/azerothcore/mod-autobalance.git master|https://github.com/azerothcore/mod-auto-revive.git'
+        default: 'https://github.com/liyunfan1223/mod-playerbots.git|https://github.com/azerothcore/mod-eluna.git|https://github.com/azerothcore/mod-learn-spells.git|https://github.com/azerothcore/mod-autobalance.git|https://github.com/azerothcore/mod-auto-revive.git'
   
   schedule:
     - cron: 0 19 * * *
