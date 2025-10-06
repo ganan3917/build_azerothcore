@@ -1,22 +1,7 @@
-
 name: Playerbots-Win_X64
 
 on:
   workflow_dispatch:
-    inputs:
-      repo:
-        description: 'AzerothCore repository URL'
-        required: true
-        default: 'liyunfan1223/azerothcore-wotlk'
-      branch:
-        description: 'Branch'
-        required: true
-        default: 'Playerbot'
-      modules:
-        description: 'Modules (separated by |)'
-        required: false
-        default: 'https://github.com/liyunfan1223/mod-playerbots.git|https://github.com/azerothcore/mod-eluna.git|https://github.com/azerothcore/mod-learn-spells.git|https://github.com/azerothcore/mod-autobalance.git|https://github.com/azerothcore/mod-auto-revive.git'
-  
   schedule:
     - cron: 0 19 * * *
     
@@ -25,15 +10,16 @@ jobs:
     runs-on: windows-2025
     
     env:
-      # 基础配置
-      AC_REPO: ${{ github.event.inputs.repo }}
-      AC_BRANCH: ${{ github.event.inputs.branch }}
-      AC_MODULES: ${{ github.event.inputs.modules }}
+      # 固定配置（不再支持外部输入，所有触发方式均使用这些值）
+      AC_REPO: 'liyunfan1223/azerothcore-wotlk'
+      AC_BRANCH: 'Playerbot'
+      AC_MODULES: 'https://github.com/liyunfan1223/mod-playerbots.git|https://github.com/azerothcore/mod-eluna.git|https://github.com/azerothcore/mod-learn-spells.git|https://github.com/azerothcore/mod-autobalance.git|https://github.com/azerothcore/mod-auto-revive.git'
       
       # 目录设置
       SOURCE_DIR: ${{ github.workspace }}/azerothcore
       BUILD_DIR: ${{ github.workspace }}/build
       INSTALL_DIR: ${{ github.workspace }}/install
+      
       # Boost配置
       BOOST_INSTALL_DIR: D:\boost\boost_1_89_0
       BOOST_DOWNLOAD_URL: https://archives.boost.io/release/1.89.0/binaries/boost_1_89_0-msvc-14.3-64.exe
@@ -91,11 +77,7 @@ jobs:
             -DCMAKE_INSTALL_PREFIX="${{ env.INSTALL_DIR }}" `
             -DBOOST_ROOT="${{ env.BOOST_ROOT }}" `
             -DTOOLS=1 `
-            -DSCRIPTS=static `
-            # -MYSQL_EXECUTABLE:FILEPATH=C:/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe `
-            # -MYSQL_INCLUDE_DIR:PATH=C:/Program Files/MySQL/MySQL Server 8.0/include `
-            # -MYSQL_LIBRARY:FILEPATH=C:/Program Files/MySQL/MySQL Server 8.0/lib/libmysql.lib `
-            # -OPENSSL_INCLUDE_DIR:PATH=C:/Program Files/OpenSSL-Win64/include `
+            -DSCRIPTS=static
         shell: pwsh
 
       - name: Setup MSBuild
