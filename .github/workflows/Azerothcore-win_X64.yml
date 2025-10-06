@@ -105,7 +105,7 @@ jobs:
       - name: 获取时间
         id: ts
         run: |
-          $utc = (Get-Date).ToUniversalTime().ToString("yyyyMMdd")
+          $utc = (Get-Date).ToUniversalTime().ToString("yyyyMMddHHmmss")
           echo "utc=$utc" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
