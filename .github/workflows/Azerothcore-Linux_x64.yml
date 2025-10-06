@@ -81,8 +81,8 @@ jobs:
         run: |
           mkdir -p /home/runner/Release
           cp -r /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/* /home/runner/Release/
-          tar -czvf "acore-${{ steps.ts.outputs.utc }}.tar.gz" -C /home/runner Release
-          echo "name=acore-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
+          tar -czvf "linux_x64-${{ steps.ts.outputs.utc }}.tar.gz" -C /home/runner Release
+          echo "name=linux_x64-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
           
       - name: 创建 Release 并上传资产
         uses: ncipollo/release-action@v1
