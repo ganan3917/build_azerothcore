@@ -117,7 +117,7 @@ jobs:
       - name: 打包目录
         id: package
         run: |
-          $zipName = "Release_${{ steps.ts.outputs.utc }}.zip"
+          $zipName = "playerbots_Win_x64_${{ steps.ts.outputs.utc }}.zip"
           $sourceDir = "${{ env.BUILD_DIR }}\bin\Release\*"
           $7zipPath = "C:\Program Files\7-Zip\7z.exe"
           Write-Host "使用7zip打包：$sourceDir -> $zipName"
@@ -128,10 +128,10 @@ jobs:
       - name: 创建Release并上传
         uses: ncipollo/release-action@v1.14.0
         with:
-          tag: "Azerothcore_playerbots-win_X64_${{ steps.ts.outputs.utc }}"
-          name: "Azerothcore_playerbots-win_X64_${{ steps.ts.outputs.utc }}"
+          tag: "Azerothcore_playerbots_win_X64_${{ steps.ts.outputs.utc }}"
+          name: "Azerothcore_playerbots_win_X64_${{ steps.ts.outputs.utc }}"
           body: |
-            ### Azerothcore_playerbots-win_X64
+            ### Azerothcore_playerbots_win_X64
           artifacts: "${{ steps.package.outputs.name }}"
           token: ${{ secrets.BUILD_AZEROTHCORE }}
           replacesArtifacts: true
