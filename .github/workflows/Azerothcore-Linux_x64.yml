@@ -9,7 +9,6 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       # 路径配置
-      TZ: Asia/Shanghai
       ROOT_DIR: ./azerothcore
       BUILD_DIR: ./azerothcore/build
       INSTALL_DIR: ./azerothcore/build/install
@@ -35,6 +34,7 @@ jobs:
       - name: 生成时间
         id: ts
         run: |
+          export TZ=Asia/Shanghai
           echo "utc=$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
           
       - name: 克隆仓库
