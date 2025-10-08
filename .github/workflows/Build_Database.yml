@@ -9,7 +9,6 @@ jobs:
   Build_Database:
     runs-on: ubuntu-22.04
     env:
-      TZ: Asia/Shanghai
       ROOT_DIR: ./azerothcore
       MODULES_DIR: ./azerothcore/modules
       ACORE_REPO: "https://github.com/liyunfan1223/azerothcore-wotlk.git"
@@ -20,6 +19,7 @@ jobs:
       - name: 生成时间
         id: ts
         run: |
+          export TZ=Asia/Shanghai
           echo "utc=$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
           
       - name: 克隆仓库
