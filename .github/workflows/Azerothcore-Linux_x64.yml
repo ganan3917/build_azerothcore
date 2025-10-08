@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       # 路径配置
+      TZ: Asia/Shanghai
       ROOT_DIR: ./azerothcore
       BUILD_DIR: ./azerothcore/build
       INSTALL_DIR: ./azerothcore/build/install
