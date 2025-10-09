@@ -39,8 +39,7 @@ jobs:
       - name: 生成时间
         id: ts
         run: |
-          export TZ=Asia/Shanghai
-          echo "utcs=$(date +%Y%m%d%H%M)" >> $GITHUB_OUTPUT
+          echo "utcs=$(TZ=Asia/Shanghai date +%Y%m%d%H%M)" >> $GITHUB_OUTPUT
 
       - name: 克隆仓库
         run: |
