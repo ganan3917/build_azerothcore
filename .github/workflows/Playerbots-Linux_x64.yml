@@ -40,7 +40,7 @@ jobs:
         id: ts
         run: |
           export TZ=Asia/Shanghai
-          echo "utc=$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+          echo "utcs=$(date +%Y%m%d%H%M)" >> $GITHUB_OUTPUT
 
       - name: 克隆仓库
         run: |
@@ -93,10 +93,10 @@ jobs:
       - name: 创建Release并上传资产
         uses: ncipollo/release-action@v1
         with:
-         tag: "Playerbots_Linux-x64_${{ steps.ts.outputs.utc }}"
-         name: "Playerbots_Linux-x64_${{ steps.ts.outputs.utc }}"
+         tag: "Playerbots_Linux-x64_${{ steps.ts.outputs.utcs }}"
+         name: "Playerbots_Linux-x64_${{ steps.ts.outputs.utcs }}"
          body: |
-              ### Azerothcore_Playerbots_Linux-x64
+              ### Playerbots_Linux-x64_${{ steps.ts.outputs.utcs }}
          artifacts: "./${{ steps.package.outputs.name }}"
          token: ${{ secrets.BUILD_AZEROTHCORE }}
          replacesArtifacts: true
