@@ -65,7 +65,7 @@ jobs:
          tag: "Database_${{ steps.ts.outputs.utcs }}"
          name: "Database_${{ steps.ts.outputs.utcs }}"
          body: |
-              ### Playerbots_Database_${{ steps.ts.outputs.utcs }}
+              ### Database_${{ steps.ts.outputs.utcs }}
          artifacts: "./${{ steps.package.outputs.name }}"
          token: ${{ secrets.BUILD_AZEROTHCORE }}
          replacesArtifacts: true
