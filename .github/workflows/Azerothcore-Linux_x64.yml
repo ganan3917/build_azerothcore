@@ -17,7 +17,7 @@ jobs:
       ACORE_REPO: "https://github.com/azerothcore/azerothcore-wotlk.git"
       ACORE_BRANCH: "master"
       BUILD_TYPE: "MinSizeRel"
-      MODULES_INPUT: ""
+      MODULES_INPUT: |
 
     steps:
       - name: 安装依赖
