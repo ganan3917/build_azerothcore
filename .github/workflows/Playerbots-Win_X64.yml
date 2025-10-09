@@ -10,7 +10,6 @@ jobs:
     runs-on: windows-2025
     
     env:
-      TZ: Asia/Shanghai
       # 固定配置（不再支持外部输入，所有触发方式均使用这些值）
       AC_REPO: 'liyunfan1223/azerothcore-wotlk'
       AC_BRANCH: 'Playerbot'
@@ -93,8 +92,8 @@ jobs:
       - name: 获取时间
         id: ts
         run: |
-          $utc = (Get-Date).ToUniversalTime().AddHours(8).ToString("yyyyMMddHHmmss")
-          echo "utc=$utc" >> $env:GITHUB_OUTPUT
+          $utcs = (Get-Date).ToUniversalTime().AddHours(8).ToString("yyyyMMddHHmm")
+          echo "utctime=$utcs" >> $env:GITHUB_OUTPUT
         shell: pwsh
       
       - name: 打包目录
@@ -111,10 +110,10 @@ jobs:
       - name: 创建Release并上传
         uses: ncipollo/release-action@v1.14.0
         with:
-          tag: "Playerbots_Win_X64_${{ steps.ts.outputs.utc }}"
-          name: "Playerbots_Win_X64_${{ steps.ts.outputs.utc }}"
+          tag: "Playerbots_Win_X64_${{ steps.ts.outputs.utctime }}"
+          name: "Playerbots_Win_X64_${{ steps.ts.outputs.utctime }}"
           body: |
-            ### Azerothcore_Playerbots_Win_X64
+            ### Playerbots_Win_X64_${{ steps.ts.outputs.utctime }}
           artifacts: "${{ steps.package.outputs.name }}"
           token: ${{ secrets.BUILD_AZEROTHCORE }}
           replacesArtifacts: true
