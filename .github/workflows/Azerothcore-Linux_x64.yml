@@ -17,9 +17,8 @@ jobs:
       ACORE_REPO: "https://github.com/azerothcore/azerothcore-wotlk.git"
       ACORE_BRANCH: "master"
       BUILD_TYPE: "MinSizeRel"
-      MODULES_INPUT: |
-              https://github.com/azerothcore/mod-eluna.git master
-              https://github.com/azerothcore/mod-autobalance.git master  
+      MODULES_INPUT: ""
+
     steps:
       - name: 安装依赖
         run: |
