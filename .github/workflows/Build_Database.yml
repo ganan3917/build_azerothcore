@@ -20,7 +20,7 @@ jobs:
         id: ts
         run: |
           export TZ=Asia/Shanghai
-          echo "utcs=$(date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+          echo "utcs=$(date +%Y%m%d%H%M)" >> $GITHUB_OUTPUT
           
       - name: 克隆仓库
         run: |
@@ -65,7 +65,7 @@ jobs:
          tag: "Database_${{ steps.ts.outputs.utcs }}"
          name: "Database_${{ steps.ts.outputs.utcs }}"
          body: |
-              ### Azerothcore_Playerbots_Database_${{ steps.ts.outputs.utcs }}
+              ### Playerbots_Database_${{ steps.ts.outputs.utcs }}
          artifacts: "./${{ steps.package.outputs.name }}"
          token: ${{ secrets.BUILD_AZEROTHCORE }}
          replacesArtifacts: true
