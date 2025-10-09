@@ -39,7 +39,7 @@ jobs:
       - name: 生成时间
         id: ts
         run: |
-          echo "utcs=$(TZ=Asia/Shanghai date +%Y%m%d%H%M)" >> $GITHUB_OUTPUT
+          echo "utcs=$(TZ=Asia/Shanghai date +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
 
       - name: 克隆仓库
         run: |
@@ -86,8 +86,8 @@ jobs:
         run: |
           mkdir -p /home/runner/Release
           cp -r /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/* /home/runner/Release/
-          tar -czvf "Playerbots_linux_x64-${{ steps.ts.outputs.utc }}.tar.gz" -C /home/runner Release
-          echo "name=Playerbots_linux_x64-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
+          tar -czvf "Playerbots_linux_x64-${{ steps.ts.outputs.utcs }}.tar.gz" -C /home/runner Release
+          echo "name=Playerbots_linux_x64-${{ steps.ts.outputs.utcs }}.tar.gz" >> $GITHUB_OUTPUT
           
       - name: 创建Release并上传资产
         uses: ncipollo/release-action@v1
