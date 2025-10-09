@@ -17,7 +17,6 @@ jobs:
       ACORE_REPO: "https://github.com/azerothcore/azerothcore-wotlk.git"
       ACORE_BRANCH: "master"
       BUILD_TYPE: "MinSizeRel"
-      MODULES_INPUT: |
 
     steps:
       - name: 安装依赖
@@ -40,27 +39,6 @@ jobs:
         run: |
           git clone --branch "${{ env.ACORE_BRANCH }}" "${{ env.ACORE_REPO }}" "${{ env.ROOT_DIR }}"
           cd "${{ env.ROOT_DIR }}" && git submodule update --init --recursive
-          
-      - name: 拉取模块
-        id: modules
-        run: |
-          mkdir -p "${{ env.MODULES_DIR }}"
-          success=()
-          failure=()
-          while IFS= read -r line; do
-            [ -z "$line" ] && continue
-            repo=$(echo "$line" | awk '{print $1}')
-            branch=$(echo "$line" | awk '{print $2}')
-            name=$(basename "$repo" .git)
-            if git clone --depth 1 --branch "$branch" "$repo" "${{ env.MODULES_DIR }}/$name"; then
-              success+=("$name（$branch）")
-            else
-              failure+=("$name（$branch）")
-              echo "模块 $name 克隆失败，将继续构建"
-            fi
-          done <<< "${{ env.MODULES_INPUT }}"
-          echo "success=$(IFS=';'; echo "${success[*]}")" >> $GITHUB_OUTPUT
-          echo "failure=$(IFS=';'; echo "${failure[*]}")" >> $GITHUB_OUTPUT
           
       - name: 配置与编译
         run: |
