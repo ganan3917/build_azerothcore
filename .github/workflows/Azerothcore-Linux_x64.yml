@@ -35,7 +35,7 @@ jobs:
         id: ts
         run: |
           export TZ=Asia/Shanghai
-          echo "utc=$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_OUTPUT
+          echo "utcs=$(date +%Y%m%d%H%M)" >> $GITHUB_OUTPUT
           
       - name: 克隆仓库
         run: |
@@ -82,16 +82,16 @@ jobs:
         run: |
           mkdir -p /home/runner/Release
           cp -r /home/runner/work/build_azerothcore/build_azerothcore/azerothcore/build/azerothcore/build/install/* /home/runner/Release/
-          tar -czvf "linux_x64-${{ steps.ts.outputs.utc }}.tar.gz" -C /home/runner Release
-          echo "name=linux_x64-${{ steps.ts.outputs.utc }}.tar.gz" >> $GITHUB_OUTPUT
+          tar -czvf "linux_x64-${{ steps.ts.outputs.utcs }}.tar.gz" -C /home/runner Release
+          echo "name=linux_x64-${{ steps.ts.outputs.utcs }}.tar.gz" >> $GITHUB_OUTPUT
           
       - name: 创建 Release 并上传资产
         uses: ncipollo/release-action@v1
         with:
-         tag: "Azerothcore_Linux_x64_${{ steps.ts.outputs.utc }}"
-         name: "Azerothcore_Linux_x64_${{ steps.ts.outputs.utc }}"
+         tag: "Azerothcore_Linux_x64_${{ steps.ts.outputs.utcs }}"
+         name: "Azerothcore_Linux_x64_${{ steps.ts.outputs.utcs }}"
          body: |
-               ### Azerothcore_Linux_x64
+               ### Azerothcore_Linux_x64_${{ steps.ts.outputs.utcs }}
          artifacts: "./${{ steps.package.outputs.name }}" 
          artifactContentType: "application/gzip"
          token: ${{ secrets.BUILD_AZEROTHCORE }}
