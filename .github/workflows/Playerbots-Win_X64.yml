@@ -99,7 +99,7 @@ jobs:
       - name: 打包目录
         id: package
         run: |
-          $zipName = "playerbots_Win_x64_${{ steps.ts.outputs.utc }}.zip"
+          $zipName = "playerbots_Win_x64_${{ steps.ts.outputs.utctime }}.zip"
           $sourceDir = "${{ env.BUILD_DIR }}\bin\Release\*"
           $7zipPath = "C:\Program Files\7-Zip\7z.exe"
           Write-Host "使用7zip打包：$sourceDir -> $zipName"
