@@ -107,7 +107,7 @@ jobs:
           echo "name=$zipName" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
-      - name: 创建Release并上传
+      - name: 创建上传Release
         uses: ncipollo/release-action@v1.14.0
         with:
           tag: "Playerbots_Win_X64_${{ steps.ts.outputs.utctime }}"
