@@ -51,10 +51,10 @@ jobs:
       - name: 复制文件打包
         id: package
         run: |
-          mkdir -p /home/runner/Release/Azerothcore
-          mkdir -p /home/runner/ReleaseAzerothcore/modules/mod-playerbots
-          cp -r "${{ env.ROOT_DIR }}"/data/* /home/runner/Release/Azerothcore/
-          cp -r "${{ env.ROOT_DIR }}"/modules/mod-playerbots/data/* /home/runner/Release/Azerothcore/modules/mod-playerbots/
+          mkdir -p /home/runner/Database/Azerothcore
+          mkdir -p /home/runner/Database/Azerothcore/modules/mod-playerbots
+          cp -r "${{ env.ROOT_DIR }}"/data/* /home/runner/Database/Azerothcore/
+          cp -r "${{ env.ROOT_DIR }}"/modules/mod-playerbots/data/* /home/runner/Database/Azerothcore/modules/mod-playerbots/
           tar -czvf "Database-${{ steps.ts.outputs.utcs }}.tar.gz" -C /home/runner Release
           echo "name=Database-${{ steps.ts.outputs.utcs }}.tar.gz" >> $GITHUB_OUTPUT
           
