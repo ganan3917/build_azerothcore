@@ -10,7 +10,7 @@ jobs:
     runs-on: windows-2025
     
     env:
-      # 固定配置（不再支持外部输入，所有触发方式均使用这些值）
+      # 固定配置
       AC_REPO: 'liyunfan1223/azerothcore-wotlk'
       AC_BRANCH: 'Playerbot'
       AC_MODULES: 'https://github.com/liyunfan1223/mod-playerbots.git|https://github.com/azerothcore/mod-eluna.git|https://github.com/azerothcore/mod-learn-spells.git|https://github.com/azerothcore/mod-autobalance.git|https://github.com/azerothcore/mod-auto-revive.git'
@@ -121,7 +121,7 @@ jobs:
       - name: 清理旧Release
         uses: dev-drprasad/delete-older-releases@v0.3.4
         with:
-          keep_latest: 6
+          keep_latest: 15
           delete_tags: true
         env:
           GITHUB_TOKEN: ${{ secrets.BUILD_AZEROTHCORE }}
