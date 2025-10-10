@@ -54,7 +54,7 @@ jobs:
           mkdir -p /home/runner/Release/Azerothcore
           mkdir -p /home/runner/ReleaseAzerothcore/modules/mod-playerbots
           cp -r "${{ env.ROOT_DIR }}"/data/* /home/runner/Release/Azerothcore/
-          cp -r "${{ env.ROOT_DIR }}"/modules/mod-playerbots/data/* /home/runner/ReleaseAzerothcore/modules/mod-playerbots/
+          cp -r "${{ env.ROOT_DIR }}"/modules/mod-playerbots/data/* /home/runner/Release/Azerothcore/modules/mod-playerbots/
           tar -czvf "Database-${{ steps.ts.outputs.utcs }}.tar.gz" -C /home/runner Release
           echo "name=Database-${{ steps.ts.outputs.utcs }}.tar.gz" >> $GITHUB_OUTPUT
           
@@ -66,8 +66,8 @@ jobs:
          body: |
               ### Database_${{ steps.ts.outputs.utcs }}
                  - 放到以下位置，设置mysql环境，运行服务器将自动导入数据：
-                       - Linux：/home/runner/work/azerothcore/azerothcore/
-                       - Windows：D:\a\azerothcore\azerothcore\
+                        - Linux：/home/runner/work/azerothcore/azerothcore/
+                        - Windows：D:\a\azerothcore\azerothcore\
          artifacts: "./${{ steps.package.outputs.name }}"
          token: ${{ secrets.BUILD_AZEROTHCORE }}
          replacesArtifacts: true
