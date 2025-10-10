@@ -72,10 +72,10 @@ jobs:
          token: ${{ secrets.BUILD_AZEROTHCORE }}
          replacesArtifacts: true
 
-      - name: 清理旧Release
+      - name: 清理releases保留最新的6个
         uses: dev-drprasad/delete-older-releases@v0.3.4
         with:
-           keep_latest: 4
+           keep_latest: 6
            delete_tags: true
         env:
          GITHUB_TOKEN: ${{ secrets.BUILD_AZEROTHCORE }}
