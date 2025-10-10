@@ -10,7 +10,6 @@ jobs:
       ROOT_DIR: ./azerothcore
       BUILD_DIR: ./azerothcore/build
       INSTALL_DIR: ./azerothcore/build/install
-      MODULES_DIR: ./azerothcore/modules
       # 核心配置
       ACORE_REPO: "https://github.com/azerothcore/azerothcore-wotlk.git"
       ACORE_BRANCH: "master"
