@@ -1,4 +1,4 @@
-[![Playerbots-Win_X64](https://github.com/ganan3917/build_azerothcore/actions/workflows/Playerbots-Win_X64.yml/badge.svg?event=workflow_dispatch)](https://github.com/ganan3917/build_azerothcore/actions/workflows/Playerbots-Win_X64.yml)　
+[![Playerbots-Linux_x64](https://github.com/ganan3917/build_azerothcore/actions/workflows/Playerbots-Linux_x64.yml/badge.svg?event=workflow_dispatch)](https://github.com/ganan3917/build_azerothcore/actions/workflows/Playerbots-Linux_x64.yml)　
 [![Playerbots-Win_X64](https://github.com/ganan3917/build_azerothcore/actions/workflows/Playerbots-Win_X64.yml/badge.svg?event=workflow_dispatch)](https://github.com/ganan3917/build_azerothcore/actions/workflows/Playerbots-Win_X64.yml)　
 [![Build_Database](https://github.com/ganan3917/build_azerothcore/actions/workflows/Build_Database.yml/badge.svg?event=workflow_dispatch)](https://github.com/ganan3917/build_azerothcore/actions/workflows/Build_Database.yml)
 
