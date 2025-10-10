@@ -55,7 +55,7 @@ jobs:
           mkdir -p /home/runner/Database/Azerothcore/modules/mod-playerbots
           cp -r "${{ env.ROOT_DIR }}"/data/* /home/runner/Database/Azerothcore/
           cp -r "${{ env.ROOT_DIR }}"/modules/mod-playerbots/data/* /home/runner/Database/Azerothcore/modules/mod-playerbots/
-          tar -czvf "Database-${{ steps.ts.outputs.utcs }}.tar.gz" -C /home/runner Release
+          tar -czvf "Database-${{ steps.ts.outputs.utcs }}.tar.gz" -C /home/runner Database
           echo "name=Database-${{ steps.ts.outputs.utcs }}.tar.gz" >> $GITHUB_OUTPUT
           
       - name: 创建上传Release
