@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     env:
-      # 路径配置（调整INSTALL_DIR到BUILD_DIR内部）
+      # 路径配置
       ROOT_DIR: ./azerothcore
       BUILD_DIR: ./azerothcore/build
       INSTALL_DIR: ./azerothcore/build/install
