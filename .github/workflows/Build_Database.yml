@@ -65,7 +65,7 @@ jobs:
          name: "Database_${{ steps.ts.outputs.utcs }}"
          body: |
               ### Database_${{ steps.ts.outputs.utcs }}
-                 - 放到以下位置，设置mysql环境，运行服务器将自动导入数据：
+                 - 复制到以下位置，设置mysql环境，运行服务器将自动导入数据：
                         - Linux：/home/runner/work/azerothcore/azerothcore/
                         - Windows：D:\a\azerothcore\azerothcore\
          artifacts: "./${{ steps.package.outputs.name }}"
