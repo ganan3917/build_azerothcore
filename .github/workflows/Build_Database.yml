@@ -72,7 +72,7 @@ jobs:
          token: ${{ secrets.BUILD_AZEROTHCORE }}
          replacesArtifacts: true
 
-      - name: 清理releases保留最新的6个
+      - name: 清理releases
         uses: dev-drprasad/delete-older-releases@v0.3.4
         with:
            keep_latest: 6
