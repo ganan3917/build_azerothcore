@@ -15,7 +15,7 @@ jobs:
       INSTALL_DIR: ./azerothcore/build/install
       MODULES_DIR: ./azerothcore/modules
       # 核心配置
-      ACORE_REPO: "https://github.com/liyunfan1223/azerothcore-wotlk.git"
+      ACORE_REPO: "https://github.com/mod-playerbots/azerothcore-wotlk.git"
       ACORE_BRANCH: "Playerbot"
       BUILD_TYPE: "MinSizeRel"
       MODULES_INPUT: |
