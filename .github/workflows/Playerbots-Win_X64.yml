@@ -13,7 +13,7 @@ jobs:
       # 固定配置
       AC_REPO: 'liyunfan1223/azerothcore-wotlk'
       AC_BRANCH: 'Playerbot'
-      AC_MODULES: 'https://github.com/liyunfan1223/mod-playerbots.git|https://github.com/azerothcore/mod-eluna.git|https://github.com/azerothcore/mod-learn-spells.git|https://github.com/azerothcore/mod-autobalance.git'
+      AC_MODULES: 'https://github.com/mod-playerbots/mod-playerbots.git|https://github.com/azerothcore/mod-eluna.git|https://github.com/azerothcore/mod-learn-spells.git|https://github.com/azerothcore/mod-autobalance.git'
       
       # 目录设置
       SOURCE_DIR: ${{ github.workspace }}/azerothcore
