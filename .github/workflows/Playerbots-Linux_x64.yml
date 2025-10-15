@@ -20,6 +20,7 @@ jobs:
       BUILD_TYPE: "MinSizeRel"
       MODULES_INPUT: |
         https://github.com/mod-playerbots/mod-playerbots.git master
+        https://github.com/azerothcore/mod-eluna.git master
 
     steps:
       - name: 安装依赖
