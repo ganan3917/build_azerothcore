@@ -21,6 +21,8 @@ jobs:
       MODULES_INPUT: |
         https://github.com/mod-playerbots/mod-playerbots.git master
         https://github.com/azerothcore/mod-eluna.git master
+        https://github.com/azerothcore/mod-learn-spells.git master
+        https://github.com/azerothcore/mod-autobalance.git master
 
     steps:
       - name: 安装依赖
