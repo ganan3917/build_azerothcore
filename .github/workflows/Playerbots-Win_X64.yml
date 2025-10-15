@@ -3,8 +3,8 @@ name: Playerbots-Win_X64
 on:
   workflow_dispatch:
   schedule:
-    - cron: 0 19 * * *
-    - cron: 0 6 * * *
+    - cron: 0 18 * * *
+    - cron: 0 9 * * *
     
     
 jobs:
